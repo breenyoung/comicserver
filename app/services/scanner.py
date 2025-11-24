@@ -212,7 +212,7 @@ class LibraryScanner:
         series = self._get_or_create_series(series_name)
         volume = self._get_or_create_volume(series, volume_num)
 
-        # Update ALL comic fields
+        # Update ALL comic fields (set to None if not in metadata)
         comic.volume_id = volume.id
         comic.file_modified_at = file_mtime
         comic.page_count = metadata['page_count']
@@ -225,7 +225,7 @@ class LibraryScanner:
         comic.month = int(metadata.get('month')) if metadata.get('month') else None
         comic.day = int(metadata.get('day')) if metadata.get('day') else None
 
-        # Credits
+        # Credits (these will be None if not in metadata)
         comic.writer = metadata.get('writer')
         comic.penciller = metadata.get('penciller')
         comic.inker = metadata.get('inker')
@@ -240,15 +240,26 @@ class LibraryScanner:
         comic.format = metadata.get('format')
         comic.series_group = metadata.get('series_group')
 
-        # Technical
+        # Technical (will be None if removed from metadata)
         comic.scan_information = metadata.get('scan_information')
 
-        # Update tags (clear and reassign)
-        comic.characters = self.tag_service.get_or_create_characters(metadata.get('characters', ''))
-        comic.teams = self.tag_service.get_or_create_teams(metadata.get('teams', ''))
-        comic.locations = self.tag_service.get_or_create_locations(metadata.get('locations', ''))
+        # CLEAR existing tags first, then add new ones
+        # This ensures removed tags are actually removed
+        comic.characters.clear()
+        comic.teams.clear()
+        comic.locations.clear()
 
-        # Reading lists
+        # Now add the new tags (if any)
+        if metadata.get('characters'):
+            comic.characters = self.tag_service.get_or_create_characters(metadata.get('characters'))
+
+        if metadata.get('teams'):
+            comic.teams = self.tag_service.get_or_create_teams(metadata.get('teams'))
+
+        if metadata.get('locations'):
+            comic.locations = self.tag_service.get_or_create_locations(metadata.get('locations'))
+
+        # Reading lists (will be None if removed)
         comic.alternate_series = metadata.get('alternate_series')
         comic.alternate_number = metadata.get('alternate_number')
         comic.story_arc = metadata.get('story_arc')
@@ -259,6 +270,8 @@ class LibraryScanner:
 
         self.db.commit()
         self.db.refresh(comic)
+
+        print(f"Updated: {series_name} #{metadata.get('number', '?')} - {file_path.name}")
 
         return comic
 

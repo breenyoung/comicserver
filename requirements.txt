@@ -1,0 +1,14 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+sqlalchemy>=2.0.25
+alembic==1.12.1
+pillow>=10.0.0
+rarfile==4.1
+#py7zr==0.20.8
+lxml>=5.0.0
+python-dotenv==1.0.0
+jinja2==3.1.2
+python-multipart==0.0.6
+aiofiles==23.2.1
+pydantic-settings>=2.0.0
+pydantic>=2.5.0

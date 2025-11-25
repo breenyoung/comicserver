@@ -23,7 +23,7 @@ NON_PLAIN_FORMATS = [
     'trade paperback',
     'trade paper back',
     'tpb',
-    'preview'
+    'preview',
     'special'
 ]
 

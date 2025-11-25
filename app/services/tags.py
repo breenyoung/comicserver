@@ -27,11 +27,12 @@ class TagService:
         if not names:
             return []
 
-        # Split by comma and clean up
+        # Split by comma and clean up, then deduplicate
         name_list = [n.strip() for n in names.split(',') if n.strip()]
+        unique_names = list(dict.fromkeys(name_list))  # Deduplicate while preserving order
 
         characters = []
-        for name in name_list:
+        for name in unique_names:
             characters.append(self.get_or_create_character(name))
 
         return characters
@@ -54,10 +55,12 @@ class TagService:
         if not names:
             return []
 
+        # Split by comma and clean up, then deduplicate
         name_list = [n.strip() for n in names.split(',') if n.strip()]
+        unique_names = list(dict.fromkeys(name_list))  # Deduplicate while preserving order
 
         teams = []
-        for name in name_list:
+        for name in unique_names:
             teams.append(self.get_or_create_team(name))
 
         return teams
@@ -80,10 +83,12 @@ class TagService:
         if not names:
             return []
 
+        # Split by comma and clean up, then deduplicate
         name_list = [n.strip() for n in names.split(',') if n.strip()]
+        unique_names = list(dict.fromkeys(name_list))  # Deduplicate while preserving order
 
         locations = []
-        for name in name_list:
+        for name in unique_names:
             locations.append(self.get_or_create_location(name))
 
         return locations

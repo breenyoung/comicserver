@@ -41,6 +41,13 @@ async def get_comic(comic_id: int, db: Session = Depends(get_db)):
     if not comic:
         raise HTTPException(status_code=404, detail="Comic not found")
 
+    # Build credits dictionary by role
+    credits = {}
+    for credit in comic.credits:
+        if credit.role not in credits:
+            credits[credit.role] = []
+        credits[credit.role].append(credit.person.name)
+
     return {
         "id": comic.id,
         "filename": comic.filename,
@@ -58,14 +65,8 @@ async def get_comic(comic_id: int, db: Session = Depends(get_db)):
         "month": comic.month,
         "day": comic.day,
 
-        # Credits
-        "writer": comic.writer,
-        "penciller": comic.penciller,
-        "inker": comic.inker,
-        "colorist": comic.colorist,
-        "letterer": comic.letterer,
-        "cover_artist": comic.cover_artist,
-        "editor": comic.editor,
+        # Credits (grouped by role)
+        "credits": credits,
 
         # Publishing
         "publisher": comic.publisher,

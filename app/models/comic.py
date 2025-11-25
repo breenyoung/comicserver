@@ -6,6 +6,7 @@ from app.database import Base
 # Import the junction tables
 from app.models.tags import comic_characters, comic_teams, comic_locations
 
+
 class Volume(Base):
     __tablename__ = "volumes"
 
@@ -36,19 +37,13 @@ class Comic(Base):
     month = Column(Integer)
     day = Column(Integer)
 
-    # Credits
-    writer = Column(String)
-    penciller = Column(String)
-    inker = Column(String)
-    colorist = Column(String)
-    letterer = Column(String)
-    cover_artist = Column(String)
-    editor = Column(String)
+    # Credits now handled via relationships (removed individual fields)
+    credits = relationship("ComicCredit", back_populates="comic", cascade="all, delete-orphan")
 
     # Publishing info
     publisher = Column(String)
     imprint = Column(String)
-    format = Column(String)  # e.g., "Limited Series", "Ongoing", etc.
+    format = Column(String)
     series_group = Column(String)
 
     # Scan info
@@ -71,3 +66,36 @@ class Comic(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     volume = relationship("Volume", back_populates="comics")
+
+    # Helper methods to get credits by role
+    def get_credits_by_role(self, role: str) -> list:
+        """Get all people for a specific role"""
+        return [credit.person.name for credit in self.credits if credit.role == role]
+
+    @property
+    def writers(self):
+        return self.get_credits_by_role('writer')
+
+    @property
+    def pencillers(self):
+        return self.get_credits_by_role('penciller')
+
+    @property
+    def inkers(self):
+        return self.get_credits_by_role('inker')
+
+    @property
+    def colorists(self):
+        return self.get_credits_by_role('colorist')
+
+    @property
+    def letterers(self):
+        return self.get_credits_by_role('letterer')
+
+    @property
+    def cover_artists(self):
+        return self.get_credits_by_role('cover_artist')
+
+    @property
+    def editors(self):
+        return self.get_credits_by_role('editor')

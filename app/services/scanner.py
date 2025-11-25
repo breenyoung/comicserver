@@ -11,6 +11,7 @@ from app.models.comic import Volume, Comic
 from app.services.archive import ComicArchive
 from app.services.metadata import parse_comicinfo
 from app.services.tags import TagService
+from app.services.credits import CreditService
 
 class LibraryScanner:
     """Scans library directories and imports comics"""
@@ -20,6 +21,7 @@ class LibraryScanner:
         self.db = db
         self.supported_extensions = ['.cbz', '.cbr']
         self.tag_service = TagService(db)
+        self.credit_service = CreditService(db)
 
     def scan(self, force: bool = False) -> dict:
         """
@@ -144,7 +146,7 @@ class LibraryScanner:
         volume_num = int(metadata.get('volume', 1)) if metadata.get('volume') else 1
         volume = self._get_or_create_volume(series, volume_num)
 
-        # Create comic WITHOUT tags first
+        # Create comic WITHOUT tags, credits first
         comic = Comic(
             volume_id=volume.id,
             filename=file_path.name,
@@ -159,15 +161,6 @@ class LibraryScanner:
             year=int(metadata.get('year')) if metadata.get('year') else None,
             month=int(metadata.get('month')) if metadata.get('month') else None,
             day=int(metadata.get('day')) if metadata.get('day') else None,
-
-            # Credits
-            writer=metadata.get('writer'),
-            penciller=metadata.get('penciller'),
-            inker=metadata.get('inker'),
-            colorist=metadata.get('colorist'),
-            letterer=metadata.get('letterer'),
-            cover_artist=metadata.get('cover_artist'),
-            editor=metadata.get('editor'),
 
             # Publishing
             publisher=metadata.get('publisher'),
@@ -191,7 +184,10 @@ class LibraryScanner:
         self.db.commit()
         self.db.refresh(comic)
 
-        # NOW add the many-to-many relationships for tags
+        # Add credits
+        self.credit_service.add_credits_to_comic(comic, metadata)
+
+        # Add the many-to-many relationships for tags
         if metadata.get('characters'):
             comic.characters = self.tag_service.get_or_create_characters(metadata.get('characters'))
 
@@ -235,15 +231,6 @@ class LibraryScanner:
         comic.month = int(metadata.get('month')) if metadata.get('month') else None
         comic.day = int(metadata.get('day')) if metadata.get('day') else None
 
-        # Credits (these will be None if not in metadata)
-        comic.writer = metadata.get('writer')
-        comic.penciller = metadata.get('penciller')
-        comic.inker = metadata.get('inker')
-        comic.colorist = metadata.get('colorist')
-        comic.letterer = metadata.get('letterer')
-        comic.cover_artist = metadata.get('cover_artist')
-        comic.editor = metadata.get('editor')
-
         # Publishing
         comic.publisher = metadata.get('publisher')
         comic.imprint = metadata.get('imprint')
@@ -252,6 +239,9 @@ class LibraryScanner:
 
         # Technical (will be None if removed from metadata)
         comic.scan_information = metadata.get('scan_information')
+
+        # Update credits (automatically clears old ones)
+        self.credit_service.add_credits_to_comic(comic, metadata)
 
         # CLEAR existing tags first, then add new ones
         # This ensures removed tags are actually removed

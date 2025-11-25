@@ -3,11 +3,12 @@ import rarfile
 from pathlib import Path
 from typing import List, Optional
 import io
+from app.config import settings
 
 # Import the rarfile configuration
 import rarfile
 try:
-    rarfile.UNRAR_TOOL = r"C:\Program Files\WinRAR\UnRAR.exe"
+    rarfile.UNRAR_TOOL = settings.unrar_path
 except:
     pass
 

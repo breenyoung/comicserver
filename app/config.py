@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     app_name: str = "Comic Server"
     database_url: str = "sqlite:///./storage/database/comics.db"
 
+    # Paths
+    unrar_path: str = r"C:\Program Files\WinRAR\UnRAR.exe"
+
     # Storage paths
     cache_dir: Path = Path("./storage/cache")
     cover_dir: Path = Path("./storage/cover")

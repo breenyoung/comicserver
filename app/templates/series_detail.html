@@ -49,12 +49,33 @@
                         </p>
                         <div class="flex items-center space-x-4 text-sm text-gray-500 mt-4">
                             <span x-text="`${series?.volume_count || 0} volume${series?.volume_count !== 1 ? 's' : ''}`"></span>
-                            <span>•</span>
-                            <span x-text="`${series?.total_issues || 0} issue${series?.total_issues !== 1 ? 's' : ''}`"></span>
-                            <span x-show="series?.annual_count > 0">•</span>
-                            <span x-show="series?.annual_count > 0" x-text="`${series?.annual_count} annual${series?.annual_count !== 1 ? 's' : ''}`"></span>
-                            <span x-show="series?.special_count > 0">•</span>
-                            <span x-show="series?.special_count > 0" x-text="`${series?.special_count} special${series?.special_count !== 1 ? 's' : ''}`"></span>
+                            <!-- Show issue count based on whether we have plain issues -->
+                            <template x-if="hasPlainIssues">
+                                <span>•</span>
+                            </template>
+                            <template x-if="hasPlainIssues">
+                                <span x-text="`${series?.total_issues || 0} issue${series?.total_issues !== 1 ? 's' : ''}`"></span>
+                            </template>
+                            <!-- Show total count if no plain issues -->
+                            <template x-if="!hasPlainIssues">
+                                <span>•</span>
+                            </template>
+                            <template x-if="!hasPlainIssues">
+                                <span x-text="`${getTotalCount()} issue${getTotalCount() !== 1 ? 's' : ''}`"></span>
+                            </template>
+                            <!-- Only show annuals/specials counts if we have plain issues -->
+                            <template x-if="hasPlainIssues && series?.annual_count > 0">
+                                <span>•</span>
+                            </template>
+                            <template x-if="hasPlainIssues && series?.annual_count > 0">
+                                <span x-text="`${series?.annual_count} annual${series?.annual_count !== 1 ? 's' : ''}`"></span>
+                            </template>
+                            <template x-if="hasPlainIssues && series?.special_count > 0">
+                                <span>•</span>
+                            </template>
+                            <template x-if="hasPlainIssues && series?.special_count > 0">
+                                <span x-text="`${series?.special_count} special${series?.special_count !== 1 ? 's' : ''}`"></span>
+                            </template>
                         </div>
                     </div>
                 </div>
@@ -77,21 +98,23 @@
                     :class="activeTab === 'issues' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'"
                     class="px-6 py-4 font-medium whitespace-nowrap transition-colors"
                 >
-                    All Issues
+                    Issues <span class="text-xs ml-1" x-text="`(${getIssuesTabCount()})`"></span>
                 </button>
+                <!-- Only show Annuals tab if we have plain issues AND annuals -->
                 <button 
                     @click="activeTab = 'annuals'"
                     :class="activeTab === 'annuals' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'"
                     class="px-6 py-4 font-medium whitespace-nowrap transition-colors"
-                    x-show="series?.annual_count > 0"
+                    x-show="hasPlainIssues && series?.annual_count > 0"
                 >
                     Annuals <span class="text-xs ml-1" x-text="`(${series?.annual_count})`"></span>
                 </button>
+                <!-- Only show Specials tab if we have plain issues AND specials -->
                 <button 
                     @click="activeTab = 'specials'"
                     :class="activeTab === 'specials' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'"
                     class="px-6 py-4 font-medium whitespace-nowrap transition-colors"
-                    x-show="series?.special_count > 0"
+                    x-show="hasPlainIssues && series?.special_count > 0"
                 >
                     Specials <span class="text-xs ml-1" x-text="`(${series?.special_count})`"></span>
                 </button>
@@ -113,39 +136,28 @@
             
             <!-- Tab content -->
             <div class="p-6">
-                <!-- Volumes Tab -->
+                <!-- Volumes Tab - Show one thumbnail per volume -->
                 <div x-show="activeTab === 'volumes'" style="display: none;">
                     <template x-if="volumes && volumes.length > 0">
-                        <div class="space-y-6">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                             <template x-for="volume in volumes" :key="volume.volume_number">
-                                <div class="bg-gray-700 rounded-lg p-4">
-                                    <h3 class="text-xl font-bold mb-3">
-                                        Volume <span x-text="volume.volume_number"></span>
-                                        <span class="text-sm text-gray-400 ml-2" x-text="`(${volume.issues.length} issue${volume.issues.length !== 1 ? 's' : ''})`"></span>
-                                    </h3>
-                                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                                        <template x-for="issue in volume.issues" :key="issue.id">
-                                            <a :href="`/reader/${issue.id}`" class="comic-card">
-                                                <div class="aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden relative group">
-                                                    <img 
-                                                        :src="`/api/comics/${issue.id}/thumbnail`"
-                                                        :alt="`#${issue.number}`"
-                                                        class="w-full h-full object-cover"
-                                                        loading="lazy"
-                                                    >
-                                                    <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-70 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                                        <span class="text-white font-bold">Read</span>
-                                                    </div>
-                                                </div>
-                                                <div class="mt-2">
-                                                    <p class="font-medium truncate" x-text="`#${issue.number}`"></p>
-                                                    <p class="text-sm text-gray-400 truncate" x-text="issue.title || ''"></p>
-                                                    <p class="text-xs text-gray-500" x-text="issue.year || ''"></p>
-                                                </div>
-                                            </a>
-                                        </template>
+                                <a :href="`/volumes/${volume.volume_id}`" class="comic-card">
+                                    <div class="aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden relative group">
+                                        <img 
+                                            :src="`/api/comics/${volume.first_issue_id}/thumbnail`"
+                                            :alt="`Volume ${volume.volume_number}`"
+                                            class="w-full h-full object-cover"
+                                            loading="lazy"
+                                        >
+                                        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-70 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                            <span class="text-white font-bold">View Volume</span>
+                                        </div>
                                     </div>
-                                </div>
+                                    <div class="mt-2">
+                                        <p class="font-medium truncate" x-text="`Volume ${volume.volume_number}`"></p>
+                                        <p class="text-sm text-gray-400" x-text="`${volume.issue_count} issue${volume.issue_count !== 1 ? 's' : ''}`"></p>
+                                    </div>
+                                </a>
                             </template>
                         </div>
                     </template>
@@ -154,11 +166,11 @@
                     </div>
                 </div>
                 
-                <!-- All Issues Tab -->
+                <!-- Issues Tab - Shows plain issues, OR everything if no plain issues -->
                 <div x-show="activeTab === 'issues'" style="display: none;">
-                    <template x-if="allIssues && allIssues.length > 0">
+                    <template x-if="getIssuesTabContent().length > 0">
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                            <template x-for="issue in allIssues" :key="issue.id">
+                            <template x-for="issue in getIssuesTabContent()" :key="issue.id">
                                 <a :href="`/reader/${issue.id}`" class="comic-card">
                                     <div class="aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden relative group">
                                         <img 
@@ -167,6 +179,14 @@
                                             class="w-full h-full object-cover"
                                             loading="lazy"
                                         >
+                                        <!-- Show format badge if not a plain issue -->
+                                        <template x-if="issue.format">
+                                            <div 
+                                                class="absolute top-2 right-2 text-white text-xs px-2 py-1 rounded"
+                                                :class="issue.format && issue.format.toLowerCase() === 'annual' ? 'bg-yellow-600' : 'bg-purple-600'"
+                                                x-text="issue.format"
+                                            ></div>
+                                        </template>
                                         <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-70 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
                                             <span class="text-white font-bold">Read</span>
                                         </div>
@@ -180,12 +200,12 @@
                             </template>
                         </div>
                     </template>
-                    <div x-show="!allIssues || allIssues.length === 0" class="text-center py-12 text-gray-400">
+                    <div x-show="getIssuesTabContent().length === 0" class="text-center py-12 text-gray-400">
                         <p>No issues found</p>
                     </div>
                 </div>
                 
-                <!-- Annuals Tab -->
+                <!-- Annuals Tab (only visible if hasPlainIssues) -->
                 <div x-show="activeTab === 'annuals'" style="display: none;">
                     <template x-if="annuals && annuals.length > 0">
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -219,7 +239,7 @@
                     </div>
                 </div>
                 
-                <!-- Specials Tab -->
+                <!-- Specials Tab (only visible if hasPlainIssues) -->
                 <div x-show="activeTab === 'specials'" style="display: none;">
                     <template x-if="specials && specials.length > 0">
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -379,7 +399,7 @@ function seriesDetail() {
     return {
         series: null,
         volumes: [],
-        allIssues: [],
+        plainIssues: [],
         annuals: [],
         specials: [],
         relatedCollections: [],
@@ -391,6 +411,42 @@ function seriesDetail() {
         activeTab: 'volumes',
         seriesId: {{ series_id }},
         
+        // Computed property: does this series have plain issues?
+        get hasPlainIssues() {
+            return this.plainIssues && this.plainIssues.length > 0;
+        },
+        
+        // Get total count of all issues (for standalone series)
+        getTotalCount() {
+            return (this.plainIssues?.length || 0) + 
+                   (this.annuals?.length || 0) + 
+                   (this.specials?.length || 0);
+        },
+        
+        // Get count for Issues tab
+        getIssuesTabCount() {
+            if (this.hasPlainIssues) {
+                return this.plainIssues.length;
+            } else {
+                // Show everything in Issues tab
+                return this.getTotalCount();
+            }
+        },
+        
+        // Get content for Issues tab
+        getIssuesTabContent() {
+            if (this.hasPlainIssues) {
+                // Normal behavior: just plain issues
+                return this.plainIssues;
+            } else {
+                // Standalone series: combine everything
+                return [
+                    ...(this.annuals || []),
+                    ...(this.specials || [])
+                ];
+            }
+        },
+        
         async loadSeries() {
             try {
                 const response = await fetch(`/api/series/${this.seriesId}`);
@@ -401,10 +457,13 @@ function seriesDetail() {
                 const data = await response.json();
                 this.series = data;
                 
-                // Process volumes and issues
-                this.processIssues(data.issues);
+                // Get pre-filtered lists from API
+                this.volumes = data.volumes || [];
+                this.plainIssues = data.plain_issues || [];
+                this.annuals = data.annuals || [];
+                this.specials = data.specials || [];
                 
-                // Get related collections and reading lists
+                // Get related content
                 this.relatedCollections = data.collections || [];
                 this.relatedReadingLists = data.reading_lists || [];
                 
@@ -412,8 +471,12 @@ function seriesDetail() {
                 this.details = data.details || {};
                 
                 // Get first issue for cover
-                if (this.allIssues.length > 0) {
-                    this.firstIssue = this.allIssues[0];
+                if (this.plainIssues.length > 0) {
+                    this.firstIssue = this.plainIssues[0];
+                } else if (this.annuals.length > 0) {
+                    this.firstIssue = this.annuals[0];
+                } else if (this.specials.length > 0) {
+                    this.firstIssue = this.specials[0];
                 }
                 
                 this.loading = false;
@@ -425,44 +488,6 @@ function seriesDetail() {
                 this.error = 'Failed to load series. Please try again.';
                 this.loading = false;
             }
-        },
-        
-        processIssues(issues) {
-            if (!issues || issues.length === 0) return;
-            
-            // Sort all issues by volume then issue number
-            const sorted = [...issues].sort((a, b) => {
-                if (a.volume_number !== b.volume_number) {
-                    return a.volume_number - b.volume_number;
-                }
-                return parseFloat(a.number) - parseFloat(b.number);
-            });
-            
-            this.allIssues = sorted;
-            
-            // Group by volume
-            const volumeMap = {};
-            sorted.forEach(issue => {
-                if (!volumeMap[issue.volume_number]) {
-                    volumeMap[issue.volume_number] = {
-                        volume_number: issue.volume_number,
-                        issues: []
-                    };
-                }
-                volumeMap[issue.volume_number].issues.push(issue);
-            });
-            
-            this.volumes = Object.values(volumeMap).sort((a, b) => a.volume_number - b.volume_number);
-            
-            // Filter annuals (format === 'Annual')
-            this.annuals = sorted.filter(issue => 
-                issue.format && issue.format.toLowerCase() === 'annual'
-            );
-            
-            // Filter specials (format set but not 'Annual')
-            this.specials = sorted.filter(issue => 
-                issue.format && issue.format.toLowerCase() !== 'annual'
-            );
         }
     }
 }

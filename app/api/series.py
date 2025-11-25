@@ -11,6 +11,81 @@ from app.models.reading_list import ReadingList, ReadingListItem
 
 router = APIRouter()
 
+# Formats that are NOT considered "plain" issues
+NON_PLAIN_FORMATS = [
+    'annual',
+    'giant-size',
+    'graphic novel',
+    'one shot',
+    'one-shot',
+    'hardcover',
+    'trade paperback',
+    'tpb',
+    'special'
+]
+
+
+def is_plain_issue(comic: Comic) -> bool:
+    """Check if a comic is a plain issue (not annual, special, etc.)"""
+    if not comic.format:
+        return True
+    return comic.format.lower().strip() not in NON_PLAIN_FORMATS
+
+
+def is_annual(comic: Comic) -> bool:
+    """Check if a comic is an annual"""
+    if not comic.format:
+        return False
+    return comic.format.lower().strip() == 'annual'
+
+
+def is_special(comic: Comic) -> bool:
+    """Check if a comic is a special (has format but not plain and not annual)"""
+    if not comic.format:
+        return False
+    format_lower = comic.format.lower().strip()
+    return format_lower != 'annual' and format_lower in NON_PLAIN_FORMATS
+
+
+def comic_to_dict(comic: Comic) -> Dict[str, Any]:
+    """Convert a comic to a dictionary for JSON response"""
+    return {
+        "id": comic.id,
+        "volume_number": comic.volume.volume_number,
+        "number": comic.number,
+        "title": comic.title,
+        "year": comic.year,
+        "format": comic.format,
+        "filename": comic.filename
+    }
+
+
+def get_first_issue(comics_list: List[Comic]) -> Comic:
+    """
+    Get the first issue from a list of comics, prioritizing plain issues.
+    
+    Returns the earliest plain issue by number, or if no plain issues exist,
+    returns the earliest issue overall.
+    """
+    if not comics_list:
+        return None
+    
+    # Sort all comics by issue number
+    sorted_comics = sorted(
+        comics_list, 
+        key=lambda c: float(c.number) if c.number else 0
+    )
+    
+    # Try to find the first plain issue
+    plain_comics = [c for c in sorted_comics if is_plain_issue(c)]
+    
+    if plain_comics:
+        # Return earliest plain issue
+        return plain_comics[0]
+    else:
+        # No plain issues, return earliest overall
+        return sorted_comics[0]
+
 
 @router.get("/{series_id}")
 async def get_series_detail(series_id: int, db: Session = Depends(get_db)):
@@ -28,28 +103,60 @@ async def get_series_detail(series_id: int, db: Session = Depends(get_db)):
     volume_ids = [v.id for v in volumes]
     comics = db.query(Comic).filter(Comic.volume_id.in_(volume_ids)).all()
     
-    # Process issues data
-    issues_data = []
-    for comic in comics:
-        issues_data.append({
-            "id": comic.id,
-            "volume_number": comic.volume.volume_number,
-            "number": comic.number,
-            "title": comic.title,
-            "year": comic.year,
-            "format": comic.format,
-            "filename": comic.filename
-        })
+    # Categorize comics using helper functions
+    plain_issues = [c for c in comics if is_plain_issue(c)]
+    annuals = [c for c in comics if is_annual(c)]
+    specials = [c for c in comics if is_special(c)]
     
-    # Count statistics
-    annuals = [c for c in comics if c.format and c.format.lower() == 'annual']
-    specials = [c for c in comics if c.format and c.format.lower() != 'annual' and c.format]
+    # Sort helper function
+    def sort_by_volume_and_number(comics_list):
+        return sorted(
+            comics_list, 
+            key=lambda c: (c.volume.volume_number, float(c.number) if c.number else 0)
+        )
     
-    # Get first issue (earliest by volume then issue number)
+    # Sort all categories
+    plain_issues_sorted = sort_by_volume_and_number(plain_issues)
+    annuals_sorted = sort_by_volume_and_number(annuals)
+    specials_sorted = sort_by_volume_and_number(specials)
+    
+    # Convert to dictionaries for JSON response
+    plain_issues_data = [comic_to_dict(c) for c in plain_issues_sorted]
+    annuals_data = [comic_to_dict(c) for c in annuals_sorted]
+    specials_data = [comic_to_dict(c) for c in specials_sorted]
+    
+    # Process volumes data - one entry per volume with first plain issue
+    volumes_data = []
+    for volume in volumes:
+        # Get all comics for this volume
+        volume_comics = [c for c in comics if c.volume_id == volume.id]
+        
+        if volume_comics:
+            # Get first plain issue (or earliest if no plain issues)
+            first_issue = get_first_issue(volume_comics)
+            
+            volumes_data.append({
+                "volume_id": volume.id,
+                "volume_number": volume.volume_number,
+                "first_issue_id": first_issue.id,
+                "issue_count": len(volume_comics)
+            })
+    
+    # Get first issue for series cover (earliest plain issue across all volumes)
     first_issue = None
     if comics:
-        sorted_comics = sorted(comics, key=lambda c: (c.volume.volume_number, float(c.number) if c.number else 0))
-        first_issue = sorted_comics[0] if sorted_comics else None
+        # Sort by volume number first, then issue number
+        sorted_comics = sort_by_volume_and_number(comics)
+        
+        # Try to find the first plain issue
+        plain_comics = [c for c in sorted_comics if is_plain_issue(c)]
+        
+        if plain_comics:
+            # Use earliest plain issue
+            first_issue = plain_comics[0]
+        else:
+            # No plain issues, use earliest overall
+            first_issue = sorted_comics[0] if sorted_comics else None
     
     # Get related collections (collections that contain any issue from this series)
     related_collections = []
@@ -125,11 +232,15 @@ async def get_series_detail(series_id: int, db: Session = Depends(get_db)):
         "publisher": comics[0].publisher if comics else None,
         "start_year": first_issue.year if first_issue else None,
         "volume_count": len(volumes),
-        "total_issues": len(comics),
+        "total_issues": len(plain_issues),
         "annual_count": len(annuals),
         "special_count": len(specials),
         "folder_path": folder_path,
-        "issues": issues_data,
+        "volumes": volumes_data,
+        # Send pre-filtered and sorted lists to frontend
+        "plain_issues": plain_issues_data,
+        "annuals": annuals_data,
+        "specials": specials_data,
         "collections": related_collections,
         "reading_lists": related_reading_lists,
         "details": {

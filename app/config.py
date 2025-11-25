@@ -8,7 +8,8 @@ class Settings(BaseSettings):
 
     # Storage paths
     cache_dir: Path = Path("./storage/cache")
-    thumbnail_size: tuple = (300, 450)
+    #thumbnail_size: tuple = (300, 450)
+    thumbnail_size: tuple = (320, 455)
 
     # Supported formats
     supported_extensions: list = [".cbz", ".cbr"]

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -7,6 +8,7 @@ from app.models.comic import Comic, Volume
 from app.models.series import Series
 from app.schemas.search import SearchRequest, SearchResponse
 from app.services.search import SearchService
+from app.services.images import ImageService
 
 router = APIRouter()
 
@@ -129,3 +131,114 @@ async def get_comic(comic_id: int, db: Session = Depends(get_db)):
         "created_at": comic.created_at,
         "updated_at": comic.updated_at
     }
+
+
+@router.get("/{comic_id}/pages")
+async def get_comic_pages(comic_id: int, db: Session = Depends(get_db)):
+    """Get list of all pages in a comic"""
+    comic = db.query(Comic).filter(Comic.id == comic_id).first()
+
+    if not comic:
+        raise HTTPException(status_code=404, detail="Comic not found")
+
+    image_service = ImageService()
+    page_count = image_service.get_page_count(comic.file_path)
+
+    return {
+        "comic_id": comic.id,
+        "page_count": page_count,
+        "pages": [
+            {
+                "index": i,
+                "url": f"/comics/{comic_id}/page/{i}"
+            }
+            for i in range(page_count)
+        ]
+    }
+
+
+@router.get("/{comic_id}/page/{page_index}")
+async def get_comic_page(
+        comic_id: int,
+        page_index: int,
+        db: Session = Depends(get_db)
+):
+    """
+    Get a specific page image from a comic
+
+    Args:
+        comic_id: ID of the comic
+        page_index: Zero-based page index (0 = first page/cover)
+    """
+    comic = db.query(Comic).filter(Comic.id == comic_id).first()
+
+    if not comic:
+        raise HTTPException(status_code=404, detail="Comic not found")
+
+    image_service = ImageService()
+    image_bytes = image_service.get_page_image(comic.file_path, page_index)
+
+    if not image_bytes:
+        raise HTTPException(status_code=404, detail="Page not found")
+
+    # Detect image type from bytes
+    if image_bytes.startswith(b'\xff\xd8\xff'):
+        media_type = "image/jpeg"
+    elif image_bytes.startswith(b'\x89PNG'):
+        media_type = "image/png"
+    elif image_bytes.startswith(b'GIF'):
+        media_type = "image/gif"
+    elif image_bytes.startswith(b'RIFF') and b'WEBP' in image_bytes[:20]:
+        media_type = "image/webp"
+    else:
+        media_type = "image/jpeg"  # Default
+
+    return Response(
+        content=image_bytes,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "public, max-age=31536000",  # Cache for 1 year
+            "Content-Disposition": f'inline; filename="page_{page_index}.jpg"'
+        }
+    )
+
+@router.get("/{comic_id}/cover")
+async def get_comic_cover(comic_id: int, db: Session = Depends(get_db)):
+    """Get the cover image (first page) of a comic"""
+    return await get_comic_page(comic_id, 0, db)
+
+
+@router.get("/{comic_id}/thumbnail")
+async def get_comic_thumbnail(
+        comic_id: int,
+        width: int = Query(300, ge=50, le=1000),
+        height: int = Query(450, ge=50, le=1500),
+        db: Session = Depends(get_db)
+):
+    """
+    Get a thumbnail of the comic cover
+
+    Args:
+        comic_id: ID of the comic
+        width: Thumbnail width in pixels (default 300)
+        height: Thumbnail height in pixels (default 450)
+    """
+    comic = db.query(Comic).filter(Comic.id == comic_id).first()
+
+    if not comic:
+        raise HTTPException(status_code=404, detail="Comic not found")
+
+    image_service = ImageService()
+    thumbnail_bytes = image_service.get_thumbnail(comic.file_path, width, height)
+
+    if not thumbnail_bytes:
+        raise HTTPException(status_code=404, detail="Could not generate thumbnail")
+
+    return Response(
+        content=thumbnail_bytes,
+        media_type="image/webp",
+        headers={
+            "Cache-Control": "public, max-age=31536000",  # Cache for 1 year
+            "Content-Disposition": f'inline; filename="thumbnail.webp"'
+        }
+    )

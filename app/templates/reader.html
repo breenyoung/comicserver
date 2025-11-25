@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+
+{% block title %}Reader - Comic Server{% endblock %}
+
+{% block extra_head %}
+<style>
+    body {
+        overflow: hidden;
+    }
+    .reader-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: #000;
+        display: flex;
+        flex-direction: column;
+    }
+    .reader-toolbar {
+        background: rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(10px);
+        padding: 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        z-index: 100;
+    }
+    .reader-content {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        position: relative;
+    }
+    .reader-page {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        cursor: pointer;
+    }
+    .reader-nav {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 30%;
+        cursor: pointer;
+        z-index: 10;
+    }
+    .reader-nav.left {
+        left: 0;
+    }
+    .reader-nav.right {
+        right: 0;
+    }
+    .reader-nav:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+    .reader-controls {
+        position: absolute;
+        bottom: 2rem;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(10px);
+        padding: 1rem 2rem;
+        rounded: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        opacity: 0;
+        transition: opacity 0.3s;
+        z-index: 50;
+    }
+    .reader-container:hover .reader-controls {
+        opacity: 1;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="reader-container">
+    <!-- Top toolbar -->
+    <div class="reader-toolbar">
+        <div class="flex items-center space-x-4">
+            <a href="/" class="text-white hover:text-gray-300">
+                ← Back
+            </a>
+            <div id="comic-info" class="text-white">
+                <span class="font-bold" id="comic-title">Loading...</span>
+                <span class="text-gray-400 ml-2" id="comic-meta"></span>
+            </div>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+            <button 
+                id="mark-read-btn"
+                class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white"
+                onclick="markAsRead()"
+            >
+                ✓ Mark as Read
+            </button>
+            <button 
+                class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white"
+                onclick="toggleFullscreen()"
+            >
+                ⛶ Fullscreen
+            </button>
+        </div>
+    </div>
+    
+    <!-- Reader content -->
+    <div class="reader-content" id="reader-content">
+        <!-- Navigation overlays -->
+        <div class="reader-nav left" onclick="previousPage()"></div>
+        <div class="reader-nav right" onclick="nextPage()"></div>
+        
+        <!-- Page image -->
+        <img 
+            id="current-page" 
+            class="reader-page" 
+            src="" 
+            alt="Comic page"
+        >
+        
+        <!-- Bottom controls -->
+        <div class="reader-controls">
+            <button onclick="firstPage()" class="text-white hover:text-gray-300">
+                ⏮
+            </button>
+            <button onclick="previousPage()" class="text-white hover:text-gray-300 text-2xl">
+                ◀
+            </button>
+            <div class="flex items-center space-x-2 text-white">
+                <input 
+                    type="number" 
+                    id="page-input" 
+                    class="w-16 px-2 py-1 bg-gray-700 rounded text-center"
+                    min="1"
+                    onchange="goToPage(this.value - 1)"
+                >
+                <span>/</span>
+                <span id="total-pages">0</span>
+            </div>
+            <button onclick="nextPage()" class="text-white hover:text-gray-300 text-2xl">
+                ▶
+            </button>
+            <button onclick="lastPage()" class="text-white hover:text-gray-300">
+                ⏭
+            </button>
+            
+            <div class="w-px h-6 bg-gray-600 mx-2"></div>
+            
+            <select 
+                id="fit-mode" 
+                class="px-2 py-1 bg-gray-700 rounded text-white"
+                onchange="changeFitMode(this.value)"
+            >
+                <option value="contain">Fit to Screen</option>
+                <option value="width">Fit Width</option>
+                <option value="height">Fit Height</option>
+                <option value="none">Original Size</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<script>
+const comicId = {{ comic_id }};
+let currentPage = 0;
+let totalPages = 0;
+let comicData = null;
+
+// Load comic metadata
+async function loadComic() {
+    try {
+        const response = await fetch(`/api/comics/${comicId}`);
+        comicData = await response.json();
+        
+        document.getElementById('comic-title').textContent = 
+            `${comicData.series} #${comicData.number}`;
+        document.getElementById('comic-meta').textContent = 
+            `${comicData.title || ''} (${comicData.year || 'Unknown'})`;
+        
+        // Load pages
+        const pagesResponse = await fetch(`/api/comics/${comicId}/pages`);
+        const pagesData = await pagesResponse.json();
+        totalPages = pagesData.page_count;
+        document.getElementById('total-pages').textContent = totalPages;
+        
+        // Check for existing progress
+        const progressResponse = await fetch(`/api/progress/${comicId}`);
+        const progressData = await progressResponse.json();
+        
+        if (progressData.has_progress && !progressData.completed) {
+            currentPage = progressData.current_page;
+        } else {
+            currentPage = 0;
+        }
+        
+        loadPage(currentPage);
+    } catch (error) {
+        console.error('Error loading comic:', error);
+        alert('Failed to load comic');
+    }
+}
+
+function loadPage(pageIndex) {
+    if (pageIndex < 0 || pageIndex >= totalPages) return;
+    
+    currentPage = pageIndex;
+    const img = document.getElementById('current-page');
+    img.src = `/api/comics/${comicId}/page/${pageIndex}`;
+    
+    document.getElementById('page-input').value = pageIndex + 1;
+    
+    // Update progress
+    updateProgress();
+}
+
+async function updateProgress() {
+    try {
+        await fetch(`/api/progress/${comicId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                current_page: currentPage,
+                total_pages: totalPages
+            })
+        });
+    } catch (error) {
+        console.error('Error updating progress:', error);
+    }
+}
+
+async function markAsRead() {
+    try {
+        await fetch(`/api/progress/${comicId}/mark-read`, {
+            method: 'POST'
+        });
+        showToast('Marked as read!');
+    } catch (error) {
+        console.error('Error marking as read:', error);
+    }
+}
+
+function nextPage() {
+    if (currentPage < totalPages - 1) {
+        loadPage(currentPage + 1);
+    }
+}
+
+function previousPage() {
+    if (currentPage > 0) {
+        loadPage(currentPage - 1);
+    }
+}
+
+function firstPage() {
+    loadPage(0);
+}
+
+function lastPage() {
+    loadPage(totalPages - 1);
+}
+
+function goToPage(pageIndex) {
+    loadPage(parseInt(pageIndex));
+}
+
+function changeFitMode(mode) {
+    const img = document.getElementById('current-page');
+    switch(mode) {
+        case 'contain':
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '100%';
+            img.style.width = 'auto';
+            img.style.height = 'auto';
+            break;
+        case 'width':
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = 'none';
+            img.style.width = '100%';
+            img.style.height = 'auto';
+            break;
+        case 'height':
+            img.style.maxWidth = 'none';
+            img.style.maxHeight = '100%';
+            img.style.width = 'auto';
+            img.style.height = '100%';
+            break;
+        case 'none':
+            img.style.maxWidth = 'none';
+            img.style.maxHeight = 'none';
+            img.style.width = 'auto';
+            img.style.height = 'auto';
+            break;
+    }
+}
+
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+    } else {
+        document.exitFullscreen();
+    }
+}
+
+function showToast(message) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg';
+    toast.textContent = message;
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+    switch(e.key) {
+        case 'ArrowLeft':
+        case 'a':
+            previousPage();
+            break;
+        case 'ArrowRight':
+        case 'd':
+        case ' ':
+            e.preventDefault();
+            nextPage();
+            break;
+        case 'Home':
+            firstPage();
+            break;
+        case 'End':
+            lastPage();
+            break;
+        case 'f':
+            toggleFullscreen();
+            break;
+    }
+});
+
+// Load comic on page load
+loadComic();
+</script>
+{% endblock %}

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Comic Server{% endblock %}</title>
+    
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen" x-data="{ mobileMenuOpen: false }">
+    <!-- Navigation -->
+    <nav class="bg-gray-800 border-b border-gray-700 sticky top-0 z-50">
+        <div class="container mx-auto px-4">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center space-x-8">
+                    <a href="/" class="text-xl font-bold text-blue-400 hover:text-blue-300">
+                        📚 Comic Server
+                    </a>
+                    <!-- Desktop Navigation -->
+                    <div class="hidden md:flex space-x-4">
+                        <a href="/" class="nav-link">Libraries</a>
+                        <a href="/continue-reading" class="nav-link">Continue Reading</a>
+                        <a href="/collections" class="nav-link">Collections</a>
+                        <a href="/reading-lists" class="nav-link">Reading Lists</a>
+                        <a href="/search" class="nav-link">Search</a>
+                    </div>
+                </div>
+                
+                <!-- Quick search -->
+                <div class="flex items-center space-x-4">
+                    <div class="hidden sm:block" x-data="{ searching: false, results: [] }">
+                        <input 
+                            type="search" 
+                            placeholder="Quick search..." 
+                            class="px-4 py-2 bg-gray-700 text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            @focus="searching = true"
+                            @blur="setTimeout(() => searching = false, 200)"
+                        >
+                    </div>
+                    
+                    <!-- Mobile menu button -->
+                    <button 
+                        @click="mobileMenuOpen = !mobileMenuOpen"
+                        class="md:hidden text-gray-300 hover:text-white"
+                    >
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path x-show="!mobileMenuOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                            <path x-show="mobileMenuOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Mobile Navigation -->
+            <div 
+                x-show="mobileMenuOpen"
+                x-transition:enter="transition ease-out duration-200"
+                x-transition:enter-start="opacity-0 transform -translate-y-2"
+                x-transition:enter-end="opacity-100 transform translate-y-0"
+                x-transition:leave="transition ease-in duration-150"
+                x-transition:leave-start="opacity-100 transform translate-y-0"
+                x-transition:leave-end="opacity-0 transform -translate-y-2"
+                class="md:hidden pb-4"
+            >
+                <a href="/" class="block py-2 nav-link">Libraries</a>
+                <a href="/continue-reading" class="block py-2 nav-link">Continue Reading</a>
+                <a href="/collections" class="block py-2 nav-link">Collections</a>
+                <a href="/reading-lists" class="block py-2 nav-link">Reading Lists</a>
+                <a href="/search" class="block py-2 nav-link">Search</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="container mx-auto px-4 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Toast notifications -->
+    <div id="toast-container" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
+
+    <!-- Custom JS -->
+    <script src="/static/js/app.js"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

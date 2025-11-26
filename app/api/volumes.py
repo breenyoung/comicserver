@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, asc
+from sqlalchemy import func, case, or_, asc
 from typing import List
 
 from app.database import get_db
@@ -11,6 +11,22 @@ from app.models.tags import Character, Team, Location
 from app.api.deps import PaginationParams, PaginatedResponse
 
 router = APIRouter()
+
+NON_PLAIN_FORMATS = [
+    'annual',
+    'giant size',
+    'giant-size',
+    'graphic novel',
+    'one shot',
+    'one-shot',
+    'hardcover',
+    'trade paperback',
+    'trade paper back',
+    'tpb',
+    'preview',
+    'special'
+]
+
 
 
 def comic_to_simple_dict(comic: Comic):
@@ -29,24 +45,39 @@ def comic_to_simple_dict(comic: Comic):
 @router.get("/{volume_id}")
 async def get_volume_detail(volume_id: int, db: Session = Depends(get_db)):
     """
-    Get volume summary and aggregated metadata.
+    Get volume summary with categorized counts.
     """
     volume = db.query(Volume).join(Series).filter(Volume.id == volume_id).first()
     if not volume:
         raise HTTPException(status_code=404, detail="Volume not found")
 
-    # 1. Get Basic Stats
-    issue_count = db.query(Comic).filter(Comic.volume_id == volume_id).count()
-    year_range = db.query(
-        func.min(Comic.year),
-        func.max(Comic.year)
+    # 1. Categorized Counts
+    is_plain = or_(
+        Comic.format == None,
+        func.lower(Comic.format).not_in(NON_PLAIN_FORMATS)
+    )
+    is_annual = func.lower(Comic.format) == 'annual'
+    is_special = (func.lower(Comic.format) != 'annual') & (func.lower(Comic.format).in_(NON_PLAIN_FORMATS))
+
+    stats = db.query(
+        func.count(case((is_plain, 1))).label('plain_count'),
+        func.count(case((is_annual, 1))).label('annual_count'),
+        func.count(case((is_special, 1))).label('special_count'),
+        func.min(Comic.year).label('start_year'),
+        func.max(Comic.year).label('end_year')
     ).filter(Comic.volume_id == volume_id).first()
 
-    # 2. Find Cover (First issue sorted by number)
+    # 2. Find Cover (Plain issues priority)
     first_issue = db.query(Comic) \
         .filter(Comic.volume_id == volume_id) \
+        .filter(is_plain) \
+        .filter(Comic.number != '0') \
         .order_by(Comic.year, Comic.number) \
         .first()
+
+    if not first_issue:
+        first_issue = db.query(Comic).filter(Comic.volume_id == volume_id).order_by(Comic.year, Comic.number).first()
+
 
     # 3. Aggregated Metadata (Scoped ONLY to this volume)
     writers = db.query(Person.name).join(ComicCredit).join(Comic) \
@@ -69,9 +100,14 @@ async def get_volume_detail(volume_id: int, db: Session = Depends(get_db)):
         "volume_number": volume.volume_number,
         "series_id": volume.series.id,
         "series_name": volume.series.name,
-        "issue_count": issue_count,
-        "start_year": year_range[0],
-        "end_year": year_range[1],
+
+        # Counts
+        "total_issues": stats.plain_count,  # Use plain count as main count
+        "annual_count": stats.annual_count,
+        "special_count": stats.special_count,
+
+        "start_year": stats.start_year,
+        "end_year": stats.end_year,
         "first_issue_id": first_issue.id if first_issue else None,
         "details": {
             "writers": sorted([r[0] for r in writers]),
@@ -86,13 +122,28 @@ async def get_volume_detail(volume_id: int, db: Session = Depends(get_db)):
 @router.get("/{volume_id}/issues", response_model=PaginatedResponse)
 async def get_volume_issues(
         volume_id: int,
+        type: str = Query("plain", regex="^(plain|annual|special|all)$"), # Added Type Filter
         params: PaginationParams = Depends(),
         db: Session = Depends(get_db)
 ):
     """
-    Get paginated issues for a specific volume.
+    Get paginated issues for a specific volume, filtered by type.
     """
     query = db.query(Comic).filter(Comic.volume_id == volume_id)
+
+    # Apply Filters
+    if type == "plain":
+        query = query.filter(or_(
+            Comic.format == None,
+            func.lower(Comic.format).not_in(NON_PLAIN_FORMATS)
+        ))
+    elif type == "annual":
+        query = query.filter(func.lower(Comic.format) == 'annual')
+    elif type == "special":
+        query = query.filter(
+            func.lower(Comic.format) != 'annual',
+            func.lower(Comic.format).in_(NON_PLAIN_FORMATS)
+        )
 
     total = query.count()
 

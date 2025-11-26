@@ -38,7 +38,12 @@
                     <h1 class="text-4xl font-bold text-white mb-3" x-text="`Volume ${volume?.volume_number}`"></h1>
                     
                     <div class="flex items-center space-x-4 text-sm text-gray-300">
-                        <span class="bg-gray-700 px-3 py-1 rounded-full border border-gray-600" x-text="`${volume?.issue_count} Issues`"></span>
+                        <span class="bg-blue-900/50 px-3 py-1 rounded-full border border-blue-800 text-blue-100" x-text="`${volume?.total_issues || 0} Issues`"></span>
+
+                        <template x-if="volume?.annual_count > 0">
+                            <span class="bg-yellow-900/50 px-3 py-1 rounded-full border border-yellow-800 text-yellow-100" x-text="`${volume?.annual_count} Annuals`"></span>
+                        </template>
+
                         <span x-show="volume?.start_year" x-text="`${volume?.start_year} - ${volume?.end_year || 'Present'}`"></span>
                     </div>
                 </div>
@@ -47,14 +52,35 @@
 
         <div class="bg-gray-800 rounded-lg overflow-hidden min-h-[500px] border border-gray-700 shadow-lg">
             <div class="flex border-b border-gray-700">
-                <button 
-                    @click="activeTab = 'issues'"
+                <button
+                    @click="switchTab('issues')"
                     :class="activeTab === 'issues' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-gray-750'"
                     class="px-8 py-4 font-medium transition-colors"
                 >
                     Issues
                 </button>
-                <button 
+
+                <template x-if="volume?.annual_count > 0">
+                    <button
+                        @click="switchTab('annuals')"
+                        :class="activeTab === 'annuals' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-gray-750'"
+                        class="px-8 py-4 font-medium transition-colors"
+                    >
+                        Annuals
+                    </button>
+                </template>
+
+                <template x-if="volume?.special_count > 0">
+                    <button
+                        @click="switchTab('specials')"
+                        :class="activeTab === 'specials' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-gray-750'"
+                        class="px-8 py-4 font-medium transition-colors"
+                    >
+                        Specials
+                    </button>
+                </template>
+
+                <button
                     @click="activeTab = 'details'"
                     :class="activeTab === 'details' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-gray-750'"
                     class="px-8 py-4 font-medium transition-colors"
@@ -64,11 +90,11 @@
             </div>
 
             <div class="p-6">
-                
-                <div x-show="activeTab === 'issues'">
+
+                <div x-show="['issues', 'annuals', 'specials'].includes(activeTab)">
                     <div x-show="gridLoading" class="py-12 text-center">
                         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                        <p class="text-gray-400">Loading issues...</p>
+                        <p class="text-gray-400">Loading...</p>
                     </div>
 
                     <div x-show="!gridLoading && currentItems.length > 0">
@@ -79,7 +105,7 @@
                         </div>
 
                         <div class="mt-8 flex justify-center items-center space-x-4 border-t border-gray-700 pt-6">
-                            <button 
+                            <button
                                 @click="changePage(currentPage - 1)"
                                 :disabled="currentPage === 1"
                                 class="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
@@ -89,7 +115,7 @@
                             <span class="text-gray-400">
                                 Page <span class="text-white font-bold" x-text="currentPage"></span> of <span x-text="Math.ceil(totalItems / pageSize)"></span>
                             </span>
-                            <button 
+                            <button
                                 @click="changePage(currentPage + 1)"
                                 :disabled="currentPage >= Math.ceil(totalItems / pageSize)"
                                 class="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
@@ -97,6 +123,10 @@
                                 Next
                             </button>
                         </div>
+                    </div>
+
+                    <div x-show="!gridLoading && currentItems.length === 0" class="text-center py-20 text-gray-500">
+                        <p>No comics found in this section.</p>
                     </div>
                 </div>
 
@@ -155,7 +185,7 @@
                                 </div>
                             </div>
                         </template>
-                        
+
                         <template x-if="volume?.details?.locations?.length > 0">
                             <div>
                                 <h3 class="text-lg font-bold mb-3 text-gray-200">Locations</h3>
@@ -192,6 +222,7 @@ function volumeDetail() {
         currentPage: 1,
         pageSize: 48,
         totalItems: 0,
+        currentType: 'plain',
 
         init() {
             this.loadVolumeSummary();
@@ -210,10 +241,30 @@ function volumeDetail() {
             }
         },
 
+        switchTab(tabName) {
+            this.activeTab = tabName;
+
+            if (tabName === 'details') return;
+
+            // Reset Pagination
+            this.currentPage = 1;
+            this.currentItems = [];
+
+            // Map tabs to API types
+            const typeMap = {
+                'issues': 'plain',
+                'annuals': 'annual',
+                'specials': 'special'
+            };
+
+            this.currentType = typeMap[tabName] || 'plain';
+            this.fetchIssues();
+        },
+
         async fetchIssues() {
             this.gridLoading = true;
             try {
-                const url = `/api/volumes/${this.volumeId}/issues?page=${this.currentPage}&size=${this.pageSize}`;
+                const url = `/api/volumes/${this.volumeId}/issues?type=${this.currentType}&page=${this.currentPage}&size=${this.pageSize}`;
                 const res = await fetch(url);
                 const data = await res.json();
                 this.currentItems = data.items;

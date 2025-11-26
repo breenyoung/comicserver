@@ -23,6 +23,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
-# Ensure directories exist
-settings.cache_dir.mkdir(parents=True, exist_ok=True)

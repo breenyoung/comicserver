@@ -1,0 +1,12 @@
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+
+templates = Jinja2Templates(directory="app/templates")
+
+router = APIRouter()
+
+@router.get("/jobs", response_class=HTMLResponse)
+async def admin_jobs_page(request: Request):
+    """Serve the Admin Job History page"""
+    return templates.TemplateResponse("admin/jobs.html", {"request": request})

@@ -101,15 +101,22 @@ class ScanManager:
             db.commit()
 
             print(f"Starting background scan for: {library.name}")
+
+            # Start timing
+            start_time = time.time()
+
             scanner = LibraryScanner(library, db)
 
             # Run the existing scan logic
             # We don't return the results to HTTP, so we just log them
             results = scanner.scan(force=task.force)
 
+            # Calculate elapsed time
+            elapsed_time = round(time.time() - start_time, 2)
+
             # You might want to save 'results' to a 'ScanHistory' table here
             # or update a 'status' field on the Library model
-            print(f"Scan complete for {library.name}. Imported: {results.get('imported')}")
+            print(f"Scan complete for {library.name}. Imported: {results.get('imported')}, Elapsed: {elapsed_time} seconds")
 
         except Exception as e:
             print(f"Exception inside scanner: {e}")

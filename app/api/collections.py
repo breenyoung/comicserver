@@ -52,7 +52,9 @@ async def get_collection(collection_id: int, db: Session = Depends(get_db)):
             "number": comic.number,
             "title": comic.title,
             "filename": comic.filename,
-            "year": comic.year
+            "year": comic.year,
+            "format": comic.format,
+            "thumbnail_path": f"/api/comics/{comic.id}/thumbnail"
         })
 
     return {

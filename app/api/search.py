@@ -53,7 +53,19 @@ async def get_search_suggestions(
     elif field == 'collection':
         results = db.query(Collection.name).filter(Collection.name.ilike(f"%{query}%")).limit(10).all()
 
-    # ... Add cases for Format, Imprint, Locations, etc.
+    elif field == 'location':
+        results = db.query(Location.name).filter(Location.name.ilike(f"%{query}%")).limit(10).all()
+
+    elif field == 'format':
+        # Distinct query on Comic table
+        results = db.query(Comic.format).filter(Comic.format.ilike(f"%{query}%")).distinct().limit(10).all()
+
+    elif field == 'imprint':
+        # Distinct query on Comic table
+        results = db.query(Comic.imprint).filter(Comic.imprint.ilike(f"%{query}%")).distinct().limit(10).all()
+
+    elif field == 'reading_list':
+        results = db.query(ReadingList.name).filter(ReadingList.name.ilike(f"%{query}%")).limit(10).all()
 
     # Flatten list of tuples [('Name',), ...] -> ['Name', ...]
     return [r[0] for r in results if r[0]]

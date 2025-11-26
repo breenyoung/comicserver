@@ -44,7 +44,10 @@
 
                         <div class="flex items-center space-x-4 text-sm text-gray-500 mt-4">
                             <span class="bg-gray-700 px-3 py-1 rounded-full text-gray-300 border border-gray-600" x-text="`${series?.volume_count || 0} Vols`"></span>
-                            <span class="bg-blue-900/50 px-3 py-1 rounded-full text-blue-200 border border-blue-800" x-text="`${series?.total_issues || 0} Issues`"></span>
+
+                            <template x-if="!isStandalone">
+                                <span class="bg-blue-900/50 px-3 py-1 rounded-full text-blue-200 border border-blue-800" x-text="`${series?.total_issues || 0} Issues`"></span>
+                            </template>
 
                             <template x-if="series?.annual_count > 0">
                                 <span class="bg-yellow-900/50 px-3 py-1 rounded-full text-yellow-200 border border-yellow-800" x-text="`${series?.annual_count} Annuals`"></span>
@@ -68,15 +71,16 @@
                 >
                     Volumes
                 </button>
+
                 <button
                     @click="switchTab('issues')"
                     :class="activeTab === 'issues' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-gray-750'"
                     class="px-6 py-4 font-medium whitespace-nowrap transition-colors"
                 >
-                    Issues <span class="text-xs ml-1 bg-gray-600 px-1.5 rounded-full text-gray-300" x-text="series?.total_issues"></span>
+                    Issues <span class="text-xs ml-1 bg-gray-600 px-1.5 rounded-full text-gray-300" x-text="isStandalone ? (series?.annual_count + series?.special_count) : series?.total_issues"></span>
                 </button>
 
-                <template x-if="series?.annual_count > 0">
+                <template x-if="!isStandalone && series?.annual_count > 0">
                     <button
                         @click="switchTab('annuals')"
                         :class="activeTab === 'annuals' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-gray-750'"
@@ -86,7 +90,7 @@
                     </button>
                 </template>
 
-                <template x-if="series?.special_count > 0">
+                <template x-if="!isStandalone && series?.special_count > 0">
                     <button
                         @click="switchTab('specials')"
                         :class="activeTab === 'specials' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-gray-750'"
@@ -120,7 +124,7 @@
                     <template x-if="series?.volumes && series.volumes.length > 0">
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
                             <template x-for="volume in series.volumes" :key="volume.volume_id">
-                            {% include "partials/volume_card.html" %}
+                                {% include "partials/volume_card.html" %}
                             </template>
                         </div>
                     </template>
@@ -136,7 +140,7 @@
                     <div x-show="!gridLoading && currentItems.length > 0">
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                             <template x-for="comic in currentItems" :key="comic.id">
-                            {% include "partials/comic_card.html" %}
+                                {% include "partials/comic_card.html" %}
                             </template>
                         </div>
 
@@ -170,22 +174,22 @@
 
                 <div x-show="activeTab === 'related'">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <template x-if="series?.collections && series.collections.length > 0">
+                        <template x-if="series?.collections?.length > 0">
                             <div>
                                 <h3 class="text-xl font-bold mb-4 flex items-center text-white"><span class="mr-2">📚</span> Collections</h3>
-                                <div class="space-y-3">
+                                <div class="grid grid-cols-1 gap-4">
                                     <template x-for="col in series.collections" :key="col.id">
-                                    {% include "partials/collection_card.html" %}
+                                        {% include "partials/collection_card.html" %}
                                     </template>
                                 </div>
                             </div>
                         </template>
-                        <template x-if="series?.reading_lists && series.reading_lists.length > 0">
+                        <template x-if="series?.reading_lists?.length > 0">
                             <div>
                                 <h3 class="text-xl font-bold mb-4 flex items-center text-white"><span class="mr-2">📖</span> Reading Lists</h3>
-                                <div class="space-y-3">
+                                <div class="grid grid-cols-1 gap-4">
                                     <template x-for="list in series.reading_lists" :key="list.id">
-{% include "partials/reading_list_card.html" %}
+                                        {% include "partials/reading_list_card.html" %}
                                     </template>
                                 </div>
                             </div>
@@ -195,11 +199,6 @@
 
                 <div x-show="activeTab === 'details'">
                     <div class="space-y-8">
-                        <div x-show="series?.folder_path">
-                            <h3 class="text-lg font-bold mb-2 text-gray-300">File System Path</h3>
-                            <p class="text-gray-400 font-mono text-xs bg-black/30 p-3 rounded border border-gray-700 select-all" x-text="series?.folder_path"></p>
-                        </div>
-
                         <template x-if="series?.details?.writers?.length > 0">
                             <div>
                                 <h3 class="text-lg font-bold mb-3 text-gray-200">Writers</h3>
@@ -256,7 +255,7 @@
                                 </div>
                             </div>
                         </template>
-                    </div>
+                        </div>
                 </div>
             </div>
         </div>
@@ -315,6 +314,13 @@ function seriesDetail() {
             return (this.series?.collections?.length > 0) || (this.series?.reading_lists?.length > 0);
         },
 
+        // Check if this series is a Standalone (Graphic Novel / TPB)
+        // Logic: No plain issues, but DOES have other content (Annuals/Specials)
+        get isStandalone() {
+            if (!this.series) return false;
+            return this.series.total_issues === 0 && (this.series.annual_count > 0 || this.series.special_count > 0);
+        },
+
         switchTab(tabName) {
             this.activeTab = tabName;
 
@@ -325,14 +331,20 @@ function seriesDetail() {
             this.currentPage = 1;
             this.currentItems = [];
 
-            // Map tab name to API type parameter
-            const typeMap = {
-                'issues': 'plain',
-                'annuals': 'annual',
-                'specials': 'special'
-            };
+            // LOGIC UPDATE:
+            // If it's a standalone series, the 'Issues' tab should just load EVERYTHING ('all')
+            // Otherwise it loads just 'plain' issues.
+            let typeParam = 'plain';
 
-            this.currentType = typeMap[tabName] || 'plain';
+            if (tabName === 'issues') {
+                typeParam = this.isStandalone ? 'all' : 'plain';
+            } else if (tabName === 'annuals') {
+                typeParam = 'annual';
+            } else if (tabName === 'specials') {
+                typeParam = 'special';
+            }
+
+            this.currentType = typeParam;
             this.fetchIssues();
         },
 

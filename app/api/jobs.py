@@ -33,7 +33,7 @@ async def get_active_job(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/")
+@router.get("")
 async def list_jobs(
     limit: int = Query(10, ge=1, le=100),
     status: Optional[str] = Query(None, regex="^(pending|running|completed|failed)$"),

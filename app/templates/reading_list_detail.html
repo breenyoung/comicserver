@@ -64,7 +64,7 @@
                             <!-- Thumbnail -->
                             <a :href="`/reader/${comic.comic_id}`" class="flex-shrink-0">
                                 <img 
-                                    :src="`/api/comics/${comic.comic_id}/thumbnail?width=80&height=120`" 
+                                    :src="`/api/comics/${comic.comic_id}/thumbnail`"
                                     :alt="comic.title || comic.series"
                                     class="w-16 h-24 object-cover rounded"
                                 >
@@ -72,7 +72,7 @@
                             
                             <!-- Comic info -->
                             <div class="flex-1 min-w-0">
-                                <a :href="`/reader/${comic.comic_id}`" class="hover:text-blue-400">
+                                <a :href="`/series/${comic.series_id}`" class="hover:text-blue-400">
                                     <h4 class="font-bold truncate" x-text="comic.series"></h4>
                                     <p class="text-sm text-gray-400 truncate" x-text="`#${comic.number} ${comic.title || ''}`"></p>
                                     <p class="text-xs text-gray-500" x-text="comic.year || ''"></p>

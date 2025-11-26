@@ -47,6 +47,7 @@
             <!-- Comics grid -->
             <div x-show="collection?.comics?.length > 0" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                 <template x-for="comic in collection?.comics" :key="comic.comic_id">
+                    <div>
                     <a :href="`/reader/${comic.comic_id}`" class="comic-card">
                         <div class="aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden relative group">
                             <img 
@@ -59,12 +60,15 @@
                                 <span class="text-white font-bold">Read</span>
                             </div>
                         </div>
+                    </a>
+                    <a :href="`/series/${comic.series_id}`">
                         <div class="mt-2">
                             <p class="font-medium truncate" x-text="comic.series"></p>
                             <p class="text-sm text-gray-400 truncate" x-text="`#${comic.number} ${comic.title || ''}`"></p>
                             <p class="text-xs text-gray-500" x-text="comic.year || ''"></p>
                         </div>
                     </a>
+                    </div>
                 </template>
             </div>
         </div>

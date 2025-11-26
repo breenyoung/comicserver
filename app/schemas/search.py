@@ -44,6 +44,7 @@ class ComicSearchItem(BaseModel):
     title: Optional[str] = None
     year: Optional[int] = None
     publisher: Optional[str] = None
+    format: Optional[str] = None
     thumbnail_path: Optional[str] = None
 
 

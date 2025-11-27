@@ -216,8 +216,12 @@ class SearchService:
             col = Comic.title
         elif sort_by == 'page_count':  # Added this one from schema
             col = Comic.page_count
-        else:
+        elif sort_by == 'updated':
+            col = Comic.updated_at
+        elif sort_by == 'created':  # (Explicit)
             col = Comic.created_at
+        else:
+            col = Comic.created_at # Default fallback
 
         if sort_order == 'desc':
             return query.order_by(col.desc())

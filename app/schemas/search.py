@@ -25,7 +25,7 @@ class SearchRequest(BaseModel):
     match: Literal['any', 'all'] = 'all'
     filters: List[SearchFilter] = Field(default_factory=list)
 
-    sort_by: Literal['created', 'year', 'series', 'title', 'page_count'] = 'created'
+    sort_by: Literal['created', 'updated', 'year', 'series', 'title', 'page_count'] = 'created'
     sort_order: Literal['asc', 'desc'] = 'desc'
 
     limit: int = Field(default=50, ge=1, le=1000)

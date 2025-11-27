@@ -10,6 +10,8 @@ from pathlib import Path
 
 from app.database import engine, Base
 from app.config import settings
+from app.database import SessionLocal
+from app.core.security import get_password_hash
 
 # IMPORTANT: Import all models here so SQLAlchemy knows about them
 from app.models.library import Library
@@ -21,6 +23,7 @@ from app.models.reading_list import ReadingList, ReadingListItem
 from app.models.collection import Collection, CollectionItem
 from app.models.reading_list import ReadingList, ReadingListItem
 from app.models.job import ScanJob
+from app.models.user import User
 
 
 # API Routes
@@ -28,6 +31,7 @@ from app.api import libraries, comics, reader, progress, series, volumes, search
 from app.api import reading_lists, collections
 from app.api import jobs
 from app.api import auth
+from app.api import users
 
 # Frontend Routes (HTML)
 from app.routers import pages, admin
@@ -48,6 +52,26 @@ async def lifespan(app: FastAPI):
 
     # Create database tables (models are now imported)
     Base.metadata.create_all(bind=engine)
+
+    # --- NEW: Auto-Create Default Admin ---
+    db = SessionLocal()
+    try:
+        user_count = db.query(User).count()
+        if user_count == 0:
+            print("No users found. Creating default admin...")
+            default_admin = User(
+                username="admin",
+                email="admin@example.com",
+                hashed_password=get_password_hash("admin"),  # Default password
+                is_superuser=True,
+                is_active=True
+            )
+            db.add(default_admin)
+            db.commit()
+            print("Created user: admin / admin")
+    finally:
+        db.close()
+    # --------------------------------------
 
     logger.info("Comic Server starting up...")
     logger.info("Frontend available at http://localhost:8000")
@@ -120,6 +144,7 @@ app.include_router(progress.router, prefix="/api/progress", tags=["progress"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(users.router, prefix="/api/users", tags=["users"])
 
 # 2. Frontend Routers (HTML)
 # We don't use a prefix for 'pages' because they live at the root (/)

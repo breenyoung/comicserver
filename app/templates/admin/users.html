@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}User Management - Comic Server{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto" x-data="userManager()">
+    
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">User Management</h1>
+        <button @click="openAddModal()" class="btn-primary">
+            + Add User
+        </button>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg border border-gray-700">
+        <table class="w-full text-left">
+            <thead class="bg-gray-900 text-gray-400 uppercase text-xs">
+                <tr>
+                    <th class="px-6 py-3">ID</th>
+                    <th class="px-6 py-3">Username</th>
+                    <th class="px-6 py-3">Role</th>
+                    <th class="px-6 py-3">Access</th>
+                    <th class="px-6 py-3">Last Login</th>
+                    <th class="px-6 py-3 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-700">
+                <template x-for="user in users" :key="user.id">
+                    <tr class="hover:bg-gray-750">
+                        <td class="px-6 py-4 text-gray-500 font-mono text-sm" x-text="user.id"></td>
+                        <td class="px-6 py-4 font-bold text-white">
+                            <span x-text="user.username"></span>
+                            <div class="text-xs text-gray-500 font-normal" x-text="user.email"></div>
+                            <div x-show="!user.is_active" class="inline-block bg-red-900/50 text-red-200 text-[10px] px-1.5 rounded border border-red-800 mt-1">Inactive</div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span x-show="user.is_superuser" class="bg-purple-900/50 text-purple-200 text-xs px-2 py-1 rounded border border-purple-800">Admin</span>
+                            <span x-show="!user.is_superuser" class="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded">User</span>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-400">
+                            <span x-show="user.is_superuser">All Libraries</span>
+                            <span x-show="!user.is_superuser" x-text="formatLibraryCount(user)"></span>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-400" x-text="formatDate(user.last_login)"></td>
+                        <td class="px-6 py-4 text-right space-x-2">
+                            <button @click="openEditModal(user)" class="text-blue-400 hover:text-white text-sm font-medium transition-colors">Edit</button>
+                            <button @click="deleteUser(user)" class="text-red-400 hover:text-white text-sm font-medium transition-colors">Delete</button>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    <div x-show="showAddModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50" style="display: none;" x-transition.opacity>
+        <div class="bg-gray-800 p-6 rounded-lg w-full max-w-md border border-gray-700 shadow-2xl" @click.away="showAddModal = false">
+            <h2 class="text-xl font-bold mb-4">Create New User</h2>
+            <div class="space-y-4">
+                <input type="text" x-model="newUser.username" placeholder="Username" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white focus:border-blue-500 outline-none">
+                <input type="email" x-model="newUser.email" placeholder="Email" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white focus:border-blue-500 outline-none">
+                <input type="password" x-model="newUser.password" placeholder="Password" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white focus:border-blue-500 outline-none">
+
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" x-model="newUser.is_superuser" id="new_is_admin" class="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500">
+                    <label for="new_is_admin" class="text-gray-300 select-none">Is Admin? (Full Access)</label>
+                </div>
+
+                <div class="space-y-2 transition-opacity duration-200" :class="newUser.is_superuser ? 'opacity-50 pointer-events-none' : ''">
+                    <label class="block text-sm text-gray-400">Allowed Libraries</label>
+                    <div class="bg-gray-900 border border-gray-700 rounded p-3 max-h-40 overflow-y-auto">
+                        <template x-for="lib in allLibraries" :key="lib.id">
+                            <div class="flex items-center gap-2 mb-2 last:mb-0">
+                                <input
+                                    type="checkbox"
+                                    :value="lib.id"
+                                    x-model="newUser.library_ids"
+                                    class="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
+                                >
+                                <span class="text-gray-300 text-sm" x-text="lib.name"></span>
+                            </div>
+                        </template>
+                        <div x-show="allLibraries.length === 0" class="text-gray-500 text-xs italic">No libraries found.</div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 mt-6">
+                    <button @click="showAddModal = false" class="text-gray-400 hover:text-white px-4 py-2 transition-colors">Cancel</button>
+                    <button @click="createUser()" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded transition-colors shadow-lg">Create User</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="showEditModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50" style="display: none;" x-transition.opacity>
+        <div class="bg-gray-800 p-6 rounded-lg w-full max-w-md border border-gray-700 shadow-2xl" @click.away="showEditModal = false">
+            <h2 class="text-xl font-bold mb-4">Edit User: <span x-text="editingUser.username" class="text-blue-400"></span></h2>
+            <div class="space-y-4">
+
+                <div>
+                    <label class="block text-xs text-gray-500 uppercase mb-1">Change Password (Optional)</label>
+                    <input type="password" x-model="editingUser.password" placeholder="Leave blank to keep current" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white focus:border-blue-500 outline-none">
+                </div>
+
+                <div class="space-y-2 pt-2">
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" x-model="editingUser.is_active" id="edit_is_active" class="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500">
+                        <label for="edit_is_active" class="text-gray-300 select-none">Account Active</label>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" x-model="editingUser.is_superuser" id="edit_is_admin" class="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500">
+                        <label for="edit_is_admin" class="text-gray-300 select-none">Is Admin? (Full Access)</label>
+                    </div>
+                </div>
+
+                <div class="space-y-2 pt-2 transition-opacity duration-200" :class="editingUser.is_superuser ? 'opacity-50 pointer-events-none' : ''">
+                    <label class="block text-sm text-gray-400">Allowed Libraries</label>
+                    <div class="bg-gray-900 border border-gray-700 rounded p-3 max-h-40 overflow-y-auto">
+                        <template x-for="lib in allLibraries" :key="lib.id">
+                            <div class="flex items-center gap-2 mb-2 last:mb-0">
+                                <input
+                                    type="checkbox"
+                                    :value="lib.id"
+                                    x-model="editingUser.library_ids"
+                                    class="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
+                                >
+                                <span class="text-gray-300 text-sm" x-text="lib.name"></span>
+                            </div>
+                        </template>
+                    </div>
+                    <p x-show="editingUser.is_superuser" class="text-xs text-blue-400 mt-1">Admins have access to all libraries.</p>
+                </div>
+
+                <div class="flex justify-end gap-2 mt-6">
+                    <button @click="showEditModal = false" class="text-gray-400 hover:text-white px-4 py-2 transition-colors">Cancel</button>
+                    <button @click="saveUser()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors shadow-lg">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function userManager() {
+    return {
+        users: [],
+        allLibraries: [],
+
+        // Modal States
+        showAddModal: false,
+        showEditModal: false,
+
+        // Data Models
+        newUser: { username: '', email: '', password: '', is_superuser: false, library_ids: [] },
+        editingUser: { id: null, username: '', password: '', is_superuser: false, is_active: true, library_ids: [] },
+
+        init() {
+            this.loadUsers();
+            this.loadLibraries();
+        },
+
+        async loadUsers() {
+            try {
+                const res = await fetch('/api/users/');
+                if (res.ok) this.users = await res.json();
+            } catch(e) { console.error(e); }
+        },
+
+        async loadLibraries() {
+            try {
+                const res = await fetch('/api/libraries/');
+                if (res.ok) this.allLibraries = await res.json();
+            } catch(e) { console.error(e); }
+        },
+
+        openAddModal() {
+            this.newUser = { username: '', email: '', password: '', is_superuser: false, library_ids: [] };
+            this.showAddModal = true;
+        },
+
+        async createUser() {
+            const res = await fetch('/api/users/', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(this.newUser)
+            });
+            if (res.ok) {
+                this.showAddModal = false;
+                this.loadUsers();
+            } else {
+                const err = await res.json();
+                alert("Failed to create user: " + (err.detail || "Unknown error"));
+            }
+        },
+
+        // Open Edit Modal and copy data
+        openEditModal(user) {
+            // Create a deep copy to avoid modifying the table row directly while editing
+            this.editingUser = {
+                id: user.id,
+                username: user.username,
+                password: '', // Blank by default
+                is_superuser: user.is_superuser,
+                is_active: user.is_active,
+                // Ensure we handle the list of IDs from the API response
+                library_ids: user.accessible_library_ids ? [...user.accessible_library_ids] : []
+            };
+            this.showEditModal = true;
+        },
+
+        async saveUser() {
+            // Prepare payload (exclude empty password)
+            const payload = {
+                is_superuser: this.editingUser.is_superuser,
+                is_active: this.editingUser.is_active,
+                library_ids: this.editingUser.library_ids
+            };
+
+            if (this.editingUser.password) {
+                payload.password = this.editingUser.password;
+            }
+
+            const res = await fetch(`/api/users/${this.editingUser.id}`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                this.showEditModal = false;
+                this.loadUsers();
+            } else {
+                alert("Failed to update user");
+            }
+        },
+
+        async deleteUser(user) {
+            if (!confirm(`Delete user ${user.username}? This will remove their reading history.`)) return;
+            const res = await fetch(`/api/users/${user.id}`, { method: 'DELETE' });
+            if (res.ok) this.loadUsers();
+            else alert("Error deleting user");
+        },
+
+        formatDate(dateStr) {
+            if (!dateStr) return 'Never';
+            return new Date(dateStr).toLocaleString();
+        },
+
+        formatLibraryCount(user) {
+            if (!user.accessible_library_ids || user.accessible_library_ids.length === 0) return 'None';
+            return `${user.accessible_library_ids.length} Allowed`;
+        }
+    }
+}
+</script>
+{% endblock %}

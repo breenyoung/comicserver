@@ -15,3 +15,8 @@ async def admin_jobs_page(request: Request):
 async def admin_jobs_page(request: Request):
     """Serve the Admin User Managegment page"""
     return templates.TemplateResponse("admin/users.html", {"request": request})
+
+@router.get("/libraries", response_class=HTMLResponse)
+async def admin_jobs_page(request: Request):
+    """Serve the Admin library Managegment page"""
+    return templates.TemplateResponse("admin/libraries.html", {"request": request})

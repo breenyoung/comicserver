@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_
-from typing import List, Annotated
+from typing import List, Annotated, Optional
+from pydantic import BaseModel
 
 from app.core.comic_helpers import get_smart_cover
 from app.models.library import Library
@@ -73,14 +73,57 @@ async def get_library_series(
         "items": items
     }
 
+class LibraryCreate(BaseModel):
+    name: str
+    path: str
+
 @router.post("/")
-async def create_library(name: str,
-                         path: str,
+async def create_library(lib_in: LibraryCreate,
                          db: SessionDep,
                          admin_user: AdminUser):
     """Create a new library"""
-    library = Library(name=name, path=path)
+
+    # Check for duplicates
+    existing = db.query(Library).filter(Library.name == lib_in.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Library name already exists")
+
+    library = Library(name=lib_in.name, path=lib_in.path)
+
     db.add(library)
+    db.commit()
+    db.refresh(library)
+    return library
+
+# Schema for updates
+class LibraryUpdate(BaseModel):
+    name: Optional[str] = None
+    path: Optional[str] = None
+
+@router.patch("/{library_id}")
+async def update_library(
+        library_id: int,
+        updates: LibraryUpdate,
+        db: SessionDep,
+        admin_user: AdminUser  # Admin only
+):
+    """Update library details (Name or Path)"""
+    library = db.query(Library).filter(Library.id == library_id).first()
+    if not library:
+        raise HTTPException(status_code=404, detail="Library not found")
+
+    if updates.name:
+        # Check for duplicate names
+        existing = db.query(Library).filter(Library.name == updates.name).filter(Library.id != library_id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Library name already exists")
+        library.name = updates.name
+
+    if updates.path:
+        library.path = updates.path
+        # Note: Changing path doesn't delete existing comics, but the next scan
+        # might mark them as 'missing' if the new path is totally different.
+
     db.commit()
     db.refresh(library)
     return library

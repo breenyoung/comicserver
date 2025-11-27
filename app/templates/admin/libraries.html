@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block title %}Library Management - Comic Server{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto" x-data="libraryManager()">
+    
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">Library Management</h1>
+        <button @click="openAddModal()" class="btn-primary">
+            + Add Library
+        </button>
+    </div>
+
+    <!-- Libraries Table -->
+    <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg border border-gray-700">
+        <table class="w-full text-left">
+            <thead class="bg-gray-900 text-gray-400 uppercase text-xs">
+                <tr>
+                    <th class="px-6 py-3">Name</th>
+                    <th class="px-6 py-3">Path</th>
+                    <th class="px-6 py-3">Last Scanned</th>
+                    <th class="px-6 py-3 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-700">
+                <template x-for="lib in libraries" :key="lib.id">
+                    <tr class="hover:bg-gray-750">
+                        <td class="px-6 py-4 font-bold text-white">
+                            <a :href="`/library/${lib.id}`" class="hover:text-blue-400 transition-colors" x-text="lib.name"></a>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-400 font-mono" x-text="lib.path"></td>
+                        <td class="px-6 py-4 text-sm text-gray-400">
+                            <span x-text="formatDate(lib.last_scanned)"></span>
+                            <div x-show="lib.is_scanning" class="text-blue-400 text-xs animate-pulse font-bold mt-1">
+                                Scanning...
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 text-right flex justify-end items-center gap-2">
+                            <!-- Scan Button -->
+                            <div class="relative" x-data="{ open: false }">
+                                <button 
+                                    @click="triggerScan(lib, false)" 
+                                    class="bg-gray-700 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded transition-colors flex items-center gap-1"
+                                    :disabled="lib.is_scanning"
+                                    :class="lib.is_scanning ? 'opacity-50 cursor-not-allowed' : ''"
+                                >
+                                    <span x-show="!lib.is_scanning">Scan</span>
+                                    <span x-show="lib.is_scanning" class="animate-spin">↻</span>
+                                </button>
+                                <!-- Context Menu for Force Scan could go here, or just a separate button -->
+                            </div>
+                            
+                            <button @click="triggerScan(lib, true)" class="text-gray-500 hover:text-green-400 text-xs px-2" title="Force Rescan (Ignore timestamps)">
+                                ↻ Force
+                            </button>
+
+                            <div class="h-4 w-px bg-gray-700 mx-1"></div>
+
+                            <button @click="openEditModal(lib)" class="text-blue-400 hover:text-white text-sm font-medium px-2">Edit</button>
+                            <button @click="deleteLibrary(lib)" class="text-red-400 hover:text-white text-sm font-medium px-2">Delete</button>
+                        </td>
+                    </tr>
+                </template>
+                <tr x-show="libraries.length === 0">
+                    <td colspan="4" class="px-6 py-8 text-center text-gray-500">
+                        No libraries found. Add one to get started.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ADD/EDIT MODAL -->
+    <div x-show="showModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50" style="display: none;" x-transition.opacity>
+        <div class="bg-gray-800 p-6 rounded-lg w-full max-w-md border border-gray-700 shadow-2xl" @click.away="showModal = false">
+            <h2 class="text-xl font-bold mb-4" x-text="isEditing ? 'Edit Library' : 'Add New Library'"></h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Name</label>
+                    <input type="text" x-model="form.name" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white focus:border-blue-500 outline-none" placeholder="e.g. DC Comics">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Folder Path</label>
+                    <input type="text" x-model="form.path" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white focus:border-blue-500 outline-none" placeholder="/comics/dc">
+                    <p class="text-xs text-gray-500 mt-1">Server-side path where files are located.</p>
+                </div>
+
+                <div class="flex justify-end gap-2 mt-6">
+                    <button @click="showModal = false" class="text-gray-400 hover:text-white px-4 py-2 transition-colors">Cancel</button>
+                    <button @click="saveLibrary()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors shadow-lg">
+                        <span x-text="isEditing ? 'Save Changes' : 'Create Library'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function libraryManager() {
+    return {
+        libraries: [],
+        showModal: false,
+        isEditing: false,
+        form: { id: null, name: '', path: '' },
+
+        init() {
+            this.loadLibraries();
+            // Optional: Poll for scan status updates every 5s
+            setInterval(() => this.loadLibraries(), 5000);
+        },
+
+        async loadLibraries() {
+            try {
+                const res = await fetch('/api/libraries/');
+                if (res.ok) this.libraries = await res.json();
+            } catch(e) { console.error(e); }
+        },
+
+        openAddModal() {
+            this.isEditing = false;
+            this.form = { id: null, name: '', path: '' };
+            this.showModal = true;
+        },
+
+        openEditModal(lib) {
+            this.isEditing = true;
+            this.form = { id: lib.id, name: lib.name, path: lib.path };
+            this.showModal = true;
+        },
+
+        async saveLibrary() {
+            const method = this.isEditing ? 'PATCH' : 'POST';
+            const url = this.isEditing ? `/api/libraries/${this.form.id}` : '/api/libraries/';
+
+            // Unified Payload for both Create and Update
+            const payload = {
+                name: this.form.name,
+                path: this.form.path
+            };
+
+            try {
+                const res = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    this.showModal = false;
+                    this.loadLibraries();
+                    this.form = { id: null, name: '', path: '' }; // Clear form
+                    // Optional: showToast("Library saved successfully", 'success');
+                    showToast("Library saved successfully", 'success');
+                } else {
+                    const err = await res.json();
+                    alert("Error: " + (err.detail || "Operation failed"));
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Network error occurred");
+            }
+        },
+
+        async deleteLibrary(lib) {
+            if (!confirm(`Delete library "${lib.name}"? This removes all comics from the database (files remain intact).`)) return;
+            
+            const res = await fetch(`/api/libraries/${lib.id}`, { method: 'DELETE' });
+            if (res.ok) {
+                this.loadLibraries();
+            } else {
+                alert("Failed to delete library");
+            }
+        },
+
+        async triggerScan(lib, force) {
+            const confirmMsg = force 
+                ? `Force full re-scan of "${lib.name}"? This may take a while.` 
+                : `Scan "${lib.name}" for new files?`;
+            
+            if (!confirm(confirmMsg)) return;
+
+            // Optimistic UI update
+            lib.is_scanning = true;
+
+            const res = await fetch(`/api/libraries/${lib.id}/scan?force=${force}`, { method: 'POST' });
+            if (res.ok) {
+                alert("Scan started in background.");
+            } else {
+                alert("Failed to start scan");
+                lib.is_scanning = false;
+            }
+        },
+
+        formatDate(dateStr) {
+            if (!dateStr) return 'Never';
+            return new Date(dateStr).toLocaleString();
+        }
+    }
+}
+</script>
+{% endblock %}

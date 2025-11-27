@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, select
-from typing import List
+from typing import List, Annotated
 
-from app.api.deps import get_db
+from app.api.deps import get_db, SessionDep, CurrentUser
 from app.models.comic import Comic
 from app.models.series import Series
 from app.models.library import Library
@@ -18,8 +18,9 @@ router = APIRouter()
 @router.get("/suggestions")
 async def get_search_suggestions(
         field: str,
-        query: str = Query(..., min_length=1),
-        db: Session = Depends(get_db)
+        db: SessionDep,
+        current_user: CurrentUser,
+        query: Annotated[str, Query(min_length=1)] = ...,
 ):
     """
     Autocomplete suggestions for search filters.

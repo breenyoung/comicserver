@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Optional
 import io
 from app.config import settings
+import re
 
 # Import the rarfile configuration
 import rarfile
@@ -79,8 +80,34 @@ class ComicArchive:
             if file_path.suffix.lower() in image_extensions:
                 pages.append(f)
 
-        # Natural sort (handles "page1.jpg", "page2.jpg", "page10.jpg" correctly)
-        pages.sort()
+        # --- IMPROVED SORTING LOGIC ---
+        def natural_keys(text):
+            """
+            Sorts strings naturally (1, 2, 10) AND handles the hyphen vs letter issue.
+
+            Logic:
+            1. Lowercase everything.
+            2. Replace separators (-, _) with a high-ASCII char '~' (ASCII 126).
+               This ensures 'a' (97) comes BEFORE '-' (126 in our logic).
+               Effect: 'c01a' sorts before 'c01-'
+            3. Split into chunks of text and numbers so 'page2' < 'page10'.
+            """
+            # 1. Normalize case
+            text = text.lower()
+
+            # 2. Hack: De-prioritize separators
+            # By replacing '-' with '~', we make it sort AFTER letters.
+            # 'c01a' -> 'c01a'
+            # 'c01-' -> 'c01~'
+            # 'a' < '~', so 'c01a' wins.
+            text = text.replace('-', '~').replace('_', '~')
+
+            # 3. Split into [text, number, text, number...]
+            # 'c01a' -> ['c', 1, 'a']
+            return [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', text)]
+
+        # ------------------------------
+        pages.sort(key=natural_keys)
 
         return pages
 

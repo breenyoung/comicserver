@@ -1,0 +1,10 @@
+<a :href="`/library/${lib.id}`" class="block group bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-blue-500/50 rounded-lg p-6 transition-all shadow-lg hover:shadow-blue-900/10">
+    <div class="flex items-center justify-between mb-4">
+        <div class="w-12 h-12 bg-blue-900/30 rounded-lg flex items-center justify-center text-2xl border border-blue-800/50 group-hover:scale-110 transition-transform">
+            📂
+        </div>
+        <span class="text-gray-500 group-hover:text-blue-400 transition-colors">→</span>
+    </div>
+    <h3 class="text-xl font-bold text-white group-hover:text-blue-100 transition-colors truncate" x-text="lib.name"></h3>
+    <p class="text-sm text-gray-500 mt-1 truncate" x-text="lib.path"></p>
+</a>

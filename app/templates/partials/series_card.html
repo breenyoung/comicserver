@@ -1,0 +1,27 @@
+<a :href="`/series/${series.id}`" class="block group w-40 flex-shrink-0">
+    <div class="aspect-[2/3] bg-gray-700 rounded-lg overflow-hidden relative shadow-md transition-transform duration-200 group-hover:scale-[1.02]">
+        <template x-if="series.thumbnail_path">
+            <img
+                :src="series.thumbnail_path"
+                :alt="series.name"
+                class="w-full h-full object-cover transition-opacity duration-300"
+                loading="lazy"
+            >
+        </template>
+
+        <template x-if="!series.thumbnail_path">
+            <div class="w-full h-full flex items-center justify-center bg-gray-800 text-gray-600">
+                <span class="text-4xl">📚</span>
+            </div>
+        </template>
+
+        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-60 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+            <span class="text-white font-bold bg-blue-600 px-3 py-1 text-sm rounded-full shadow-lg">View</span>
+        </div>
+    </div>
+
+    <div class="mt-2">
+        <p class="font-bold text-gray-200 truncate text-sm" x-text="series.name"></p>
+        <p class="text-xs text-gray-500" x-text="new Date(series.created_at).getFullYear()"></p>
+    </div>
+</a>

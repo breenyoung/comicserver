@@ -14,9 +14,14 @@ router = APIRouter()
 @router.get("/")
 async def list_libraries(db: SessionDep,
                          current_user: CurrentUser):
-    """List all libraries"""
-    libraries = db.query(Library).all()
-    return libraries
+    """List libraries accessible to the current user"""
+
+    # Superusers see everything
+    if current_user.is_superuser:
+        return db.query(Library).all()
+
+    # Regular users see only assigned libraries
+    return current_user.accessible_libraries
 
 
 @router.get("/{library_id}")

@@ -11,6 +11,7 @@ from app.models.series import Series
 from app.schemas.search import SearchRequest, SearchResponse
 from app.services.search import SearchService
 from app.services.images import ImageService
+from app.models.reading_progress import ReadingProgress
 
 router = APIRouter()
 
@@ -78,6 +79,17 @@ async def get_comic(comic_id: int, db: SessionDep, current_user: CurrentUser):
             credits[credit.role] = []
         credits[credit.role].append(credit.person.name)
 
+    # Check Progress
+    read_status = "new"
+    progress = db.query(ReadingProgress).filter(
+        ReadingProgress.comic_id == comic_id,
+        ReadingProgress.user_id == current_user.id
+    ).first()
+
+    # If started but not finished, show "Continue"
+    if progress and not progress.completed and progress.current_page > 0:
+        read_status = "in_progress"
+
     return {
         "id": comic.id,
         "filename": comic.filename,
@@ -134,7 +146,10 @@ async def get_comic(comic_id: int, db: SessionDep, current_user: CurrentUser):
 
         # Timestamps
         "created_at": comic.created_at,
-        "updated_at": comic.updated_at
+        "updated_at": comic.updated_at,
+
+        # Read status
+        "read_status": read_status,
     }
 
 

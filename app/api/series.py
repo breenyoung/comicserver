@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import func, case, Float
 from typing import List, Optional, Annotated
 from datetime import datetime
@@ -17,7 +16,7 @@ from app.models.reading_list import ReadingList, ReadingListItem
 from app.models.credits import Person, ComicCredit
 from app.models.tags import Character, Team, Location
 from app.models.interactions import UserSeries
-
+from app.models.reading_progress import ReadingProgress
 
 
 router = APIRouter()
@@ -94,6 +93,24 @@ async def get_series_detail(series_id: int, db: SessionDep, current_user: Curren
     base_query = db.query(Comic).filter(Comic.volume_id.in_(volume_ids))
     first_issue = get_smart_cover(base_query)
 
+    # Resume Logic
+    resume_comic_id = None
+    read_status = "new"
+
+    # Check for last read comic in this series
+    last_read = db.query(ReadingProgress).join(Comic).join(Volume) \
+        .filter(Volume.series_id == series_id) \
+        .filter(ReadingProgress.user_id == current_user.id) \
+        .order_by(ReadingProgress.last_read_at.desc()) \
+        .first()
+
+    if last_read:
+        resume_comic_id = last_read.comic_id
+        read_status = "in_progress"
+    elif first_issue:
+        # Fallback to the first issue (calculated for the cover)
+        resume_comic_id = first_issue.id
+
     # 5. VOLUMES DATA Loop (Fixed)
     volumes_data = []
     for vol in volumes:
@@ -142,7 +159,11 @@ async def get_series_detail(series_id: int, db: SessionDep, current_user: Curren
             "characters": sorted([r[0] for r in characters]),
             "teams": sorted([r[0] for r in teams]),
             "locations": sorted([r[0] for r in locations])
-        }
+        },
+        "resume_to": {
+            "comic_id": resume_comic_id,
+            "status": read_status
+        },
     }
 
 

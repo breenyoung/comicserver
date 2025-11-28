@@ -1,0 +1,8 @@
+<a
+    :href="`/reader/${comicId}`"
+    class="text-white font-bold py-3 px-4 rounded-lg text-center transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20"
+    :class="comic?.read_status === 'in_progress' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-green-600 hover:bg-green-500'"
+>
+    <span class="text-xl" x-text="comic?.read_status === 'in_progress' ? '▶' : '📖'"></span>
+    <span x-text="comic.read_status === 'in_progress' ? 'Continue' : 'Read Now'"></span>
+</a>

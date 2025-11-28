@@ -11,7 +11,7 @@ from app.models.comic import Comic, Volume
 from app.models.series import Series
 from app.models.credits import Person, ComicCredit
 from app.models.tags import Character, Team, Location
-
+from app.models.reading_progress import ReadingProgress
 
 router = APIRouter()
 
@@ -53,6 +53,23 @@ async def get_volume_detail(volume_id: int, db: SessionDep, current_user: Curren
     base_query = db.query(Comic).filter(Comic.volume_id == volume_id)
     first_issue = get_smart_cover(base_query)
 
+    # Resume Logic
+    resume_comic_id = None
+    read_status = "new"
+
+    last_read = db.query(ReadingProgress).join(Comic) \
+        .filter(Comic.volume_id == volume_id) \
+        .filter(ReadingProgress.user_id == current_user.id) \
+        .order_by(ReadingProgress.last_read_at.desc()) \
+        .first()
+
+    if last_read:
+        resume_comic_id = last_read.comic_id
+        read_status = "in_progress"
+    elif first_issue:
+        resume_comic_id = first_issue.id
+
+
     # 3. Aggregated Metadata (Scoped ONLY to this volume)
     writers = db.query(Person.name).join(ComicCredit).join(Comic) \
         .filter(Comic.volume_id == volume_id).filter(ComicCredit.role == 'writer').distinct().all()
@@ -89,7 +106,11 @@ async def get_volume_detail(volume_id: int, db: SessionDep, current_user: Curren
             "characters": sorted([r[0] for r in characters]),
             "teams": sorted([r[0] for r in teams]),
             "locations": sorted([r[0] for r in locations])
-        }
+        },
+        "resume_to": {
+            "comic_id": resume_comic_id,
+            "status": read_status
+        },
     }
 
 @router.get("/{volume_id}/issues", response_model=PaginatedResponse)

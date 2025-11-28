@@ -201,6 +201,10 @@ class LibraryScanner:
         volume_num = int(metadata.get('volume', 1)) if metadata.get('volume') else 1
         volume = self._get_or_create_volume(series, volume_num)
 
+        # Normalize number
+        raw_number = metadata.get('number')
+        clean_number = self._normalize_number(raw_number)
+
         # Create comic
         comic = Comic(
             volume_id=volume.id,
@@ -211,7 +215,7 @@ class LibraryScanner:
             page_count=metadata['page_count'],
 
             # Basic info
-            number=metadata.get('number'),
+            number=clean_number,
             title=metadata.get('title'),
             summary=metadata.get('summary'),
             year=int(metadata.get('year')) if metadata.get('year') else None,
@@ -292,12 +296,16 @@ class LibraryScanner:
         series = self._get_or_create_series(series_name)
         volume = self._get_or_create_volume(series, volume_num)
 
+        # Normalize number
+        raw_number = metadata.get('number')
+        clean_number = self._normalize_number(raw_number)
+
         # Update fields
         comic.volume_id = volume.id
         comic.file_modified_at = file_mtime
         comic.file_size = file_size_bytes
         comic.page_count = metadata['page_count']
-        comic.number = metadata.get('number')
+        comic.number = clean_number
         comic.title = metadata.get('title')
         comic.summary = metadata.get('summary')
         comic.year = int(metadata.get('year')) if metadata.get('year') else None
@@ -434,3 +442,19 @@ class LibraryScanner:
 
         except Exception as e:
             print(f"Failed to generate thumbnail for {comic.filename}: {e}")
+
+    def _normalize_number(self, number: str) -> str:
+        """
+        Normalize weird comic numbers for better sorting.
+        """
+        if not number:
+            return number
+
+        # Handle "½" -> "0.5"
+        if number == "½" or number == "1/2":
+            return "0.5"
+
+        # Handle "-1" (ensure it stays -1, though our casting handles it)
+        # Handle variants if needed in future
+
+        return number

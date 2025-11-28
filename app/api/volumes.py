@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, case
+from sqlalchemy import func, case, Float
 from typing import List, Annotated
 
 from app.core.comic_helpers import get_format_filters, get_smart_cover
@@ -117,11 +117,12 @@ async def get_volume_issues(
 
     total = query.count()
 
-    # Sort by Issue Number
-    comics = query.order_by(Comic.number) \
+    # Cast number to Float for correct numeric sorting
+    comics = query.order_by(func.cast(Comic.number, Float)) \
         .offset(params.skip) \
         .limit(params.size) \
         .all()
+
 
     return {
         "total": total,

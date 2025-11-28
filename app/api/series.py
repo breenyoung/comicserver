@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case, or_
+from sqlalchemy import func, case, Float
 from typing import List, Optional, Annotated
 from datetime import datetime
 
@@ -171,11 +171,18 @@ async def get_series_issues(
 
     total = query.count()
 
-    # Sort: Volume Number -> Issue Number
-    comics = query.order_by(Volume.volume_number, Comic.number) \
+    # Cast number to Float for correct numeric sorting (1, 2, 10 instead of 1, 10, 2)
+    # Volume number is already int, so it sorts fine.
+    comics = query.order_by(Volume.volume_number, func.cast(Comic.number, Float)) \
         .offset(params.skip) \
         .limit(params.size) \
         .all()
+
+    # Sort: Volume Number -> Issue Number
+    #comics = query.order_by(Volume.volume_number, Comic.number) \
+    #    .offset(params.skip) \
+    #    .limit(params.size) \
+    #    .all()
 
     return {
         "total": total,

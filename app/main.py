@@ -30,11 +30,9 @@ from app.services.watcher import library_watcher
 # API Routes
 from app.api import libraries, comics, reader, progress, series, volumes, search
 from app.api import reading_lists, collections
-from app.api import jobs
-from app.api import auth
-from app.api import users
-from app.api import tasks
-from app.api import stats
+from app.api import auth, users, saved_searches
+from app.api import tasks, jobs, stats
+
 
 # Frontend Routes (HTML)
 from app.routers import pages, admin
@@ -156,6 +154,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
+app.include_router(saved_searches.router, prefix="/api/saved-searches", tags=["saved-searches"])
 
 # 2. Frontend Routers (HTML)
 # We don't use a prefix for 'pages' because they live at the root (/)

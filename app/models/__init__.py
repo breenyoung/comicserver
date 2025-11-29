@@ -10,6 +10,7 @@ from app.models.reading_progress import ReadingProgress
 from app.models.job import ScanJob
 from app.models.user import User
 from app.models.interactions import UserSeries
+from app.models.saved_search import SavedSearch
 
 # This ensures all models are loaded before relationships are configured
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     'ScanJob',
     'User',
     'UserSeries',
+    'SavedSearch',
 ]
 
 

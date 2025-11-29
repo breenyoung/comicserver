@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy import func, case, Float
 from typing import List, Optional, Annotated
 from datetime import datetime
 
 from app.core.comic_helpers import NON_PLAIN_FORMATS, get_format_filters, get_smart_cover
 
-from app.api.deps import SessionDep, CurrentUser
+from app.api.deps import SessionDep, CurrentUser, AdminUser
 from app.api.deps import PaginationParams, PaginatedResponse
 
 # Import related models
@@ -18,6 +18,7 @@ from app.models.tags import Character, Team, Location
 from app.models.interactions import UserSeries
 from app.models.reading_progress import ReadingProgress
 
+from app.services.thumbnailer import ThumbnailService
 
 router = APIRouter()
 
@@ -311,3 +312,35 @@ async def unstar_series(series_id: int, db: SessionDep, current_user: CurrentUse
         pref.starred_at = None
         db.commit()
     return {"starred": False}
+
+
+@router.post("/{series_id}/thumbnails")
+async def regenerate_thumbnails(
+        series_id: int,
+        background_tasks: BackgroundTasks,
+        db: SessionDep,
+        admin: AdminUser  # Admin only
+):
+    """
+    Force regenerate thumbnails for all issues in this series.
+    Runs in background.
+    """
+    series = db.query(Series).get(series_id)
+    if not series: raise HTTPException(404)
+
+    def _task():
+        # Create a new session for the background thread (Standard pattern)
+        # Or relying on the service to handle it if designed that way.
+        # Since our service takes a session in init, we need to be careful
+        # about Session threading.
+        # Better pattern for simple tasks:
+        from app.database import SessionLocal
+        with SessionLocal() as session:
+            service = ThumbnailService(session)
+            service.process_series_thumbnails(series_id)
+            print(f"Finished regenerating thumbnails for series {series_id}")
+
+    background_tasks.add_task(_task)
+
+    return {"message": "Thumbnail regeneration started"}
+

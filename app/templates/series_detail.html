@@ -358,6 +358,14 @@ function seriesDetail() {
 
                 // Set tab title
                 document.title = `${this.series.name} - Comic Server`;
+
+                // Auto-select 'issues' if there is only 1 volume
+                if (this.series.volume_count === 1) {
+                    // We use switchTab() because it handles the logic for
+                    // 'Standalone' series (loading 'all' vs 'plain') automatically.
+                    this.switchTab('issues');
+                }
+
             } catch (e) {
                 console.error(e);
                 this.error = "Could not load series details.";

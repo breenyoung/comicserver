@@ -113,7 +113,7 @@ async def get_series_detail(series_id: int, db: SessionDep, current_user: Curren
         # Fallback to the first issue (calculated for the cover)
         resume_comic_id = first_issue.id
 
-    # 5. VOLUMES DATA Loop (Fixed)
+    # 5. VOLUMES DATA Loop
     volumes_data = []
     for vol in volumes:
         count = db.query(Comic).filter(Comic.volume_id == vol.id).count()
@@ -122,11 +122,20 @@ async def get_series_detail(series_id: int, db: SessionDep, current_user: Curren
         vol_base_query = db.query(Comic).filter(Comic.volume_id == vol.id)
         vol_first = get_smart_cover(vol_base_query)
 
+        # Check if user has read ANY comic in this volume
+        # We look for at least one completed record
+        has_read_any = db.query(ReadingProgress).join(Comic).filter(
+            Comic.volume_id == vol.id,
+            ReadingProgress.user_id == current_user.id,
+            ReadingProgress.completed == True
+        ).first()
+
         volumes_data.append({
             "volume_id": vol.id,
             "volume_number": vol.volume_number,
             "first_issue_id": vol_first.id if vol_first else None,
-            "issue_count": count
+            "issue_count": count,
+            "read": bool(has_read_any)  # True if started, False if untouched
         })
 
     # Check if starred
@@ -181,7 +190,12 @@ async def get_series_issues(
     """
     Get paginated issues for a series, filtered by type.
     """
-    query = db.query(Comic).join(Volume).join(Series).filter(Series.id == series_id)
+    # Select Comic AND the completed status
+    query = db.query(Comic, ReadingProgress.completed).outerjoin(
+        ReadingProgress,
+        (ReadingProgress.comic_id == Comic.id) & (ReadingProgress.user_id == current_user.id)
+    ).join(Volume).join(Series).filter(Series.id == series_id)
+
 
     # Get filters
     is_plain, is_annual, is_special = get_format_filters()
@@ -203,11 +217,21 @@ async def get_series_issues(
         .limit(params.size) \
         .all()
 
+    # Map results
+    # We unpack the tuple (Comic, completed)
+    items = []
+    for comic, is_completed in comics:
+        data = comic_to_simple_dict(comic)
+        # If is_completed is None (no record) or False, it's unread
+        data['read'] = True if is_completed else False
+        items.append(data)
+
+
     return {
         "total": total,
         "page": params.page,
         "size": params.size,
-        "items": [comic_to_simple_dict(c) for c in comics]
+        "items": items
     }
 
 
@@ -270,13 +294,22 @@ async def list_series(
         base_query = db.query(Comic).join(Volume).filter(Volume.series_id == s.id)
         first_issue = get_smart_cover(base_query)
 
+        # Check if ANY issue in this series is read
+        has_read_any = db.query(ReadingProgress).join(Comic).join(Volume).filter(
+            Volume.series_id == s.id,
+            ReadingProgress.user_id == current_user.id,
+            ReadingProgress.completed == True
+        ).first()
+
+
         items.append({
             "id": s.id,
             "name": s.name,
             "library_id": s.library_id,
             "start_year": first_issue.year,
             "thumbnail_path": f"/api/comics/{first_issue.id}/thumbnail" if first_issue else None,
-            "created_at": s.created_at
+            "created_at": s.created_at,
+            "read": bool(has_read_any)
         })
 
     return {

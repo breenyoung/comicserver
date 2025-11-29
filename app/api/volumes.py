@@ -128,7 +128,12 @@ async def get_volume_issues(
     """
     Get paginated issues for a specific volume, filtered by type.
     """
-    query = db.query(Comic).filter(Comic.volume_id == volume_id)
+    # Select Comic AND the completed status
+    query = db.query(Comic, ReadingProgress.completed).outerjoin(
+        ReadingProgress,
+        (ReadingProgress.comic_id == Comic.id) & (ReadingProgress.user_id == current_user.id)
+    ).filter(Comic.volume_id == volume_id)
+
 
     is_plain, is_annual, is_special = get_format_filters()
 
@@ -150,10 +155,19 @@ async def get_volume_issues(
         .limit(params.size) \
         .all()
 
+    # Map results
+    # Unpack the tuple (Comic, completed)
+    items = []
+    for comic, is_completed in comics:
+        data = comic_to_simple_dict(comic)
+        # If is_completed is None (no record) or False, it's unread
+        data['read'] = True if is_completed else False
+        items.append(data)
+
 
     return {
         "total": total,
         "page": params.page,
         "size": params.size,
-        "items": [comic_to_simple_dict(c) for c in comics]
+        "items": items
     }

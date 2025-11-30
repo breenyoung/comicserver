@@ -3,9 +3,10 @@ from app.models.setting import SystemSetting
 from typing import Any, List, Dict
 
 from app.api.deps import SessionDep
+from app.core.settings_loader import invalidate_settings_cache
 
 class SettingsService:
-    def __init__(self, db: Session):
+    def __init__(self, db: SessionDep):
         self.db = db
 
     # --- DEFINITIONS ---
@@ -95,6 +96,10 @@ class SettingsService:
 
         self.db.commit()
         self.db.refresh(setting)
+
+        # Clear the read-cache so the app sees the change immediately
+        invalidate_settings_cache()
+
         return setting
 
     def _cast_value(self, value: str, data_type: str) -> Any:

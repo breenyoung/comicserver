@@ -62,8 +62,27 @@
         opacity: 0; transition: opacity 0.3s, transform 0.3s;
         z-index: 50; border: 1px solid rgba(255,255,255,0.1);
     }
-    .reader-container:hover .reader-controls,
-    .reader-controls:hover { opacity: 1; }
+
+    /* The Invisible Trigger Zone at the bottom */
+    .hover-zone {
+        position: absolute; bottom: 0; left: 0; right: 0;
+        height: 15vh; /* Active in bottom 15% of screen */
+        z-index: 40;
+        background: transparent;
+    }
+
+    /* Base state for controls/scrubber: Hidden by default */
+    .reader-controls, .scrubber-wrapper {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s, transform 0.3s;
+    }
+
+    /* Utility class to show them via Alpine */
+    .controls-visible {
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
 
     /* Settings Panel */
     .settings-panel {
@@ -98,12 +117,6 @@
         z-index: 55;
         opacity: 0; transition: opacity 0.3s;
         pointer-events: none; /* Ignore clicks when hidden */
-    }
-
-    /* Show scrubber when hovering controls OR the scrubber itself */
-    .reader-container:hover .scrubber-wrapper,
-    .reader-controls:hover ~ .scrubber-wrapper {
-        opacity: 1; pointer-events: auto;
     }
 
     /* The Range Input Reset */
@@ -155,7 +168,10 @@
 <div class="reader-container" x-data="reader()" tabindex="0" x-on:keydown.window="handleKey($event)">
 
     <div class="reader-toolbar">
+
+        <!-- Left side close button + Comic information -->
         <div class="flex items-center space-x-4 max-w-[50%]">
+
             <button x-on:click="exitReader()" class="text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors">
                 <span class="mr-1">✕</span> Close
             </button>
@@ -165,14 +181,29 @@
             </div>
         </div>
 
+        <!-- Right side icons -->
         <div class="flex items-center space-x-2">
-            <button x-on:click.stop="showSettings = !showSettings" class="p-2 text-gray-300 hover:text-white rounded hover:bg-white/10" :class="{'text-blue-400': showSettings}">
+
+            <button x-on:click="toggleUiLock()" class="p-2 rounded hover:bg-white/10 transition-colors"
+                    :class="uiLocked ? 'text-blue-400' : 'text-gray-300'"
+                    title="Toggle UI Lock (h)">
+                <svg x-show="uiLocked" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <svg x-show="!uiLocked" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                </svg>
+            </button>
+
+
+            <button x-on:click.stop="showSettings = !showSettings" class="p-2 text-gray-300 hover:text-white rounded hover:bg-white/10" :class="{'text-blue-400': showSettings}" title="Settings">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                 </svg>
             </button>
 
-            <button x-on:click="toggleFullscreen()" class="p-2 text-gray-300 hover:text-white rounded hover:bg-white/10">
+            <button x-on:click="toggleFullscreen()" class="p-2 text-gray-300 hover:text-white rounded hover:bg-white/10" title="Toggle Fullscreen (f)">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                 </svg>
@@ -222,9 +253,14 @@
         </div>
     </div>
 
+    <div class="hover-zone"
+         x-on:mouseenter="isHoveringZone = true"
+         x-on:mouseleave="isHoveringZone = false">
+    </div>
+
     <div class="reader-content">
-        <div class="nav-zone left" @click="prevPage()"></div>
-        <div class="nav-zone right" @click="nextPage()"></div>
+        <div class="nav-zone left" x-on:click="prevPage()"></div>
+        <div class="nav-zone right" x-on:click="nextPage()"></div>
 
         <img
             id="current-page"
@@ -234,7 +270,7 @@
             alt="Page"
         >
 
-        <div class="scrubber-wrapper" x-show="meta.page_count > 0">
+        <div class="scrubber-wrapper" :class="{'controls-visible': shouldShowUI}" x-show="meta.page_count > 0">
 
             <div class="scrubber-tooltip"
                  x-show="isScrubbing || isHoveringScrubber"
@@ -257,7 +293,9 @@
         </div>
 
 
-        <div class="reader-controls">
+        <div class="reader-controls" :class="{'controls-visible': shouldShowUI}"
+                                    x-on:mouseenter="isHoveringBar = true" x-on:mouseleave="isHoveringBar = false"
+        >
             <button
                 @click="goToBook(meta.prev_comic_id)"
                 :disabled="!meta.prev_comic_id"
@@ -265,7 +303,7 @@
                 title="Previous Issue ([)"
             >⏮</button>
 
-            <button @click="prevPage()" class="text-white hover:text-blue-400 text-2xl px-2">◀</button>
+            <button x-on:click="prevPage()" class="text-white hover:text-blue-400 text-2xl px-2">◀</button>
 
             <div class="flex items-center space-x-2 text-sm font-mono text-gray-300 mx-2">
                 <span x-text="currentPage + 1" class="text-white font-bold"></span>
@@ -273,7 +311,7 @@
                 <span x-text="meta.page_count"></span>
             </div>
 
-            <button @click="nextPage()" class="text-white hover:text-blue-400 text-2xl px-2">▶</button>
+            <button x-on:click="nextPage()" class="text-white hover:text-blue-400 text-2xl px-2">▶</button>
 
             <button
                 @click="goToBook(meta.next_comic_id)"
@@ -347,6 +385,9 @@ function reader() {
         scrubberValue: 0,
         isScrubbing: false,  // True while dragging
         isHoveringScrubber: false,
+        uiLocked: false,  // If true, UI is always on
+        isHoveringZone: false,  // If true, mouse is at the bottom
+        isHoveringBar: false,  // The actual button bar
 
         // Filter State
         filters: {
@@ -478,17 +519,6 @@ function reader() {
             else document.exitFullscreen();
         },
 
-        setupKeyboard() {
-            window.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); this.nextPage(); }
-                if (e.key === 'ArrowLeft') this.prevPage();
-                if (e.key === 'Escape') this.exitReader();
-                if (e.key === 'f') this.toggleFullscreen();
-                if (e.key === ']') this.goToBook(this.meta.next_comic_id);
-                if (e.key === '[') this.goToBook(this.meta.prev_comic_id);
-            });
-        },
-
         showToast(msg) {
             // Simple toast implementation
             const div = document.createElement('div');
@@ -542,6 +572,11 @@ function reader() {
                 case 'G':
                     e.preventDefault(); // Prevent accidental scrolling
                     this.openGoto();
+                    break;
+
+                case 'h':
+                case 'H':
+                    this.toggleUiLock();
                     break;
 
                 case 'Escape':
@@ -616,6 +651,24 @@ function reader() {
                 this.currentPage = targetPage;
                 this.updateProgress();
             }
+        },
+
+        // Computed property for visibility
+        get shouldShowUI() {
+
+            return this.uiLocked
+                || this.isHoveringZone
+                || this.showSettings
+                || this.showGoto
+                || this.isScrubbing
+                // Keep visible if touching the elements themselves
+                || this.isHoveringScrubber
+                || this.isHoveringBar;
+         },
+
+        toggleUiLock() {
+            this.uiLocked = !this.uiLocked;
+            this.showToast(this.uiLocked ? "UI Pinned" : "UI Auto-Hide");
         },
 
     }

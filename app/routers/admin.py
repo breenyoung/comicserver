@@ -35,3 +35,9 @@ async def admin_tasks_page(request: Request):
 async def admin_stats_page(request: Request):
     """Serve the Admin Statistics page"""
     return templates.TemplateResponse("admin/stats.html", {"request": request})
+
+@router.get("/settings", response_class=HTMLResponse)
+async def admin_settings_page(request: Request):
+    """Serve the Admin Settings page"""
+    return templates.TemplateResponse("admin/settings.html", {"request": request})
+

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8" x-data="settingsManager()">
+    <h1 class="text-3xl font-bold mb-8 text-white">System Settings</h1>
+
+    <template x-for="(groupSettings, category) in settings" :key="category">
+        <div class="mb-8 bg-gray-800 rounded-lg p-6 border border-gray-700">
+            <h2 class="text-xl font-bold text-blue-400 capitalize mb-4" x-text="category"></h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <template x-for="setting in groupSettings" :key="setting.key">
+                    <div class="bg-gray-900 p-4 rounded border border-gray-700">
+                        <label class="block text-sm font-medium text-gray-400 mb-1" x-text="setting.label"></label>
+
+                        <template x-if="setting.data_type === 'bool'">
+                            <div class="flex items-center mt-2">
+                                <button 
+                                    @click="update(setting, !setting.value)"
+                                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+                                    :class="setting.value ? 'bg-blue-600' : 'bg-gray-700'"
+                                >
+                                    <span 
+                                        class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                                        :class="setting.value ? 'translate-x-5' : 'translate-x-0'"
+                                    ></span>
+                                </button>
+                                <span class="ml-3 text-sm text-gray-300" x-text="setting.value ? 'Enabled' : 'Disabled'"></span>
+                            </div>
+                        </template>
+
+                        <template x-if="setting.data_type === 'select'">
+                            <div class="flex gap-2">
+                                <select
+                                    x-model="setting.tempValue"
+                                    @change="update(setting, $event.target.value)"
+                                    class="bg-gray-800 text-white px-3 py-2 rounded w-full border border-gray-600 focus:border-blue-500 focus:outline-none appearance-none"
+                                >
+                                    <template x-for="opt in setting.options" :key="opt.value">
+                                        <option :value="opt.value" x-text="opt.label" :selected="opt.value == setting.value"></option>
+                                    </template>
+                                </select>
+                                </div>
+                        </template>
+
+                        <template x-if="setting.data_type !== 'bool' && setting.data_type !== 'select'">
+                            <div class="flex gap-2">
+                                <input
+                                    :type="setting.data_type === 'int' ? 'number' : 'text'" 
+                                    x-model="setting.tempValue" 
+                                    @focus="setting.tempValue = setting.value"
+                                    class="bg-gray-800 text-white px-3 py-2 rounded w-full border border-gray-600 focus:border-blue-500 focus:outline-none"
+                                >
+                                <button 
+                                    @click="update(setting, setting.tempValue)"
+                                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm"
+                                >Save</button>
+                            </div>
+                        </template>
+                        
+                        <p class="text-xs text-gray-500 mt-2" x-text="setting.description"></p>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </template>
+</div>
+
+<script>
+function settingsManager() {
+    return {
+        settings: {},
+        
+        async init() {
+            const res = await fetch('/api/settings/');
+            this.settings = await res.json();
+            
+            // Initialize tempValue for inputs (so we don't bind directly to the committed value until save)
+            Object.values(this.settings).flat().forEach(s => {
+                s.tempValue = s.value;
+            });
+        },
+
+        async update(setting, newValue) {
+            // Optimistic Update
+            const oldVal = setting.value;
+            setting.value = newValue; 
+
+            try {
+                const res = await fetch(`/api/settings/${setting.key}`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ value: newValue })
+                });
+                
+                if(!res.ok) throw new Error();
+                
+                // Refresh local state to match server format
+                const updated = await res.json();
+                setting.value = updated.value; 
+                window.comicServer.showToast("Setting saved", "success");
+            } catch(e) {
+                setting.value = oldVal; // Revert
+                window.comicServer.showToast("Error saving setting", "error");
+            }
+        },
+        
+    }
+}
+</script>
+{% endblock %}

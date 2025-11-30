@@ -12,6 +12,7 @@ from app.database import engine, Base
 from app.config import settings
 from app.database import SessionLocal
 from app.core.security import get_password_hash
+from app.services.settings_service import SettingsService
 
 # IMPORTANT: Import all models here so SQLAlchemy knows about them
 from app.models.library import Library
@@ -31,7 +32,7 @@ from app.services.watcher import library_watcher
 from app.api import libraries, comics, reader, progress, series, volumes, search
 from app.api import reading_lists, collections
 from app.api import auth, users, saved_searches
-from app.api import tasks, jobs, stats
+from app.api import tasks, jobs, stats, settings as settings_api
 
 
 # Frontend Routes (HTML)
@@ -54,9 +55,15 @@ async def lifespan(app: FastAPI):
     # Create database tables (models are now imported)
     Base.metadata.create_all(bind=engine)
 
-    # --- NEW: Auto-Create Default Admin ---
+
+    # --- NEW: Auto-Create Default Admin and initialize settings  ---
     db = SessionLocal()
     try:
+
+        # Initialize default settings
+        SettingsService(db).initialize_defaults()
+        print("Initialized system settings")
+
         user_count = db.query(User).count()
         if user_count == 0:
             print("No users found. Creating default admin...")
@@ -153,6 +160,7 @@ app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
+app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
 app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
 app.include_router(saved_searches.router, prefix="/api/saved-searches", tags=["saved-searches"])
 

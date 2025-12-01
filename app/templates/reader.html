@@ -388,6 +388,7 @@ function reader() {
         uiLocked: false,  // If true, UI is always on
         isHoveringZone: false,  // If true, mouse is at the bottom
         isHoveringBar: false,  // The actual button bar
+        isIncognito: false,
 
         // Filter State
         filters: {
@@ -398,6 +399,15 @@ function reader() {
         },
 
         init() {
+
+            // Check for incognito flag immediately
+            const params = new URLSearchParams(window.location.search);
+            this.isIncognito = params.get('incognito') === 'true';
+
+            if (this.isIncognito) {
+                window.comicServer.showToast("👓 Incognito Mode: Progress will not be saved.");
+            }
+
             this.loadInitData();
 
             // Sync Slider -> Page (Watch for external page changes)
@@ -421,6 +431,9 @@ function reader() {
                 const res = await fetch(`/api/comics/${this.comicId}/read-init`);
                 if (!res.ok) throw new Error("Failed to init reader");
                 this.meta = await res.json();
+
+                // If Incognito, DO NOT load previous progress. Start fresh.
+                if (this.isIncognito) { return; }
 
                 // Check for saved progress
                 const progRes = await fetch(`/api/progress/${this.comicId}`);
@@ -477,7 +490,7 @@ function reader() {
             } else if (this.meta.next_comic_id) {
                 // Optional: Auto-advance to next book
                 // if(confirm("Next Issue?")) this.goToBook(this.meta.next_comic_id);
-                this.showToast("End of Book. Press ] for next issue.");
+                window.comicServer.showToast("End of Book. Press ] for next issue.");
             }
         },
 
@@ -501,6 +514,10 @@ function reader() {
         },
 
         async updateProgress() {
+
+            // Block updates if incognito
+            if (this.isIncognito) { return; }
+
             // Debounce or fire-and-forget
             fetch(`/api/progress/${this.comicId}`, {
                 method: 'POST',
@@ -517,15 +534,6 @@ function reader() {
         toggleFullscreen() {
             if (!document.fullscreenElement) document.documentElement.requestFullscreen();
             else document.exitFullscreen();
-        },
-
-        showToast(msg) {
-            // Simple toast implementation
-            const div = document.createElement('div');
-            div.className = 'fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded shadow-lg z-50';
-            div.innerText = msg;
-            document.body.appendChild(div);
-            setTimeout(() => div.remove(), 2000);
         },
 
         // Centralized Key Handler
@@ -668,7 +676,7 @@ function reader() {
 
         toggleUiLock() {
             this.uiLocked = !this.uiLocked;
-            this.showToast(this.uiLocked ? "UI Pinned" : "UI Auto-Hide");
+            window.comicServer.showToast(this.uiLocked ? "UI Pinned" : "UI Auto-Hide");
         },
 
     }

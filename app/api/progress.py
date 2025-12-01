@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional, Annotated
 
@@ -156,6 +155,7 @@ async def get_recent_progress(
         comic = progress.comic
         results.append({
             "comic_id": comic.id,
+            "series_id": comic.volume.series_id,
             "series": comic.volume.series.name,
             # Handle potential None values safely
             "volume": comic.volume.volume_number if comic.volume else 0,

@@ -5,7 +5,7 @@
     </a>
 
     <div class="flex-1 min-w-0 flex flex-col justify-center w-full">
-        <a :href="`/series/${item.comic_id}`" class="text-sm text-gray-400 hover:text-blue-400 transition-colors truncate" x-text="item.series"></a>
+        <a :href="`/series/${item.series_id}`" class="text-sm text-gray-400 hover:text-blue-400 transition-colors truncate" x-text="item.series"></a>
 
         <h3 class="text-white font-bold text-lg truncate mb-1">
             <a :href="`/comics/${item.comic_id}`" class="hover:text-blue-400 transition-colors" x-text="`#${item.number} ${item.title || ''}`"></a>

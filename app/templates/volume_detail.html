@@ -322,8 +322,7 @@ function volumeDetail() {
         // Check if this volume is a Standalone (No Plain Issues)
         get isStandalone() {
             if (!this.volume) return false;
-            // total_issues is specifically the count of "Plain" issues from the API
-            return this.volume.total_issues === 0 && (this.volume.annual_count > 0 || this.volume.special_count > 0);
+            return this.volume.is_standalone;
         },
 
         switchTab(tabName) {

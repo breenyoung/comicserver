@@ -78,7 +78,20 @@ async def get_volume_detail(volume_id: int, db: SessionDep, current_user: Curren
     is_completed = False
     expected_count = stats.max_count  # only calculate "Missing" if we have a valid Count > 0
 
-    if expected_count and expected_count > 0:
+    # Logic: Is this a Standalone Volume?
+    # No plain issues, but has Annuals or Specials.
+    is_standalone = (stats.plain_count == 0 and (stats.annual_count > 0 or stats.special_count > 0))
+
+    if is_standalone:
+        # Case A: Standalone (Graphic Novel, TPB, One-Shot)
+        # Even if metadata says Count=1, we don't treat this as a missing "Issue #1".
+        # We assume if the standalone volume exists, it is complete.
+        status = "ended"
+        is_completed = True
+        missing_issues = []
+
+    elif expected_count and expected_count > 0:
+        # Case B: Standard Numbered Series
         status = "ended"
 
         # Fetch all existing "Plain" issue numbers for this volume
@@ -136,6 +149,7 @@ async def get_volume_detail(volume_id: int, db: SessionDep, current_user: Curren
         "expected_count": expected_count,  # e.g. 12
         "is_completed": is_completed,  # True if you have 1..12
         "missing_issues": missing_issues,  # e.g. [5, 6] or []
+        "is_standalone": is_standalone,
 
         "publisher": stats.publisher,
         "imprint": stats.imprint,

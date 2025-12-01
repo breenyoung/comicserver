@@ -250,6 +250,9 @@ class LibraryScanner:
             alternate_number=metadata.get('alternate_number'),
             story_arc=metadata.get('story_arc'),
 
+            # Map the Count field
+            count=int(metadata.get('count')) if metadata.get('count') else None,
+
             # Full metadata
             metadata_json=json.dumps(metadata.get('raw_metadata', {}))
         )
@@ -330,6 +333,7 @@ class LibraryScanner:
         comic.alternate_series = metadata.get('alternate_series')
         comic.alternate_number = metadata.get('alternate_number')
         comic.story_arc = metadata.get('story_arc')
+        comic.count = int(metadata.get('count')) if metadata.get('count') else None
         comic.metadata_json = json.dumps(metadata.get('raw_metadata', {}))
         comic.updated_at = datetime.utcnow()
 

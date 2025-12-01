@@ -19,6 +19,7 @@ def parse_comicinfo(xml_content: bytes) -> Dict[str, Any]:
             'volume': get_text('Volume'),
             'title': get_text('Title'),
             'summary': get_text('Summary'),
+            'count': get_text('Count'),
 
             # Date
             'year': get_text('Year'),

@@ -13,6 +13,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.core.security import get_password_hash
 from app.services.settings_service import SettingsService
+from app.services.scheduler import scheduler_service
 
 # IMPORTANT: Import all models here so SQLAlchemy knows about them
 from app.models.library import Library
@@ -84,6 +85,10 @@ async def lifespan(app: FastAPI):
     # START WATCHER
     library_watcher.start()
 
+    # START SCHEDULER
+    scheduler_service.start()
+
+
     logger.info("Comic Server starting up...")
     logger.info("Frontend available at http://localhost:8000")
     logger.info("API docs available at http://localhost:8000/docs")
@@ -94,6 +99,10 @@ async def lifespan(app: FastAPI):
 
     # STOP WATCHER
     library_watcher.stop()
+
+    # STOP SCHEDULER
+    scheduler_service.stop()
+
     print("Shutting down")
 
 

@@ -196,8 +196,8 @@ class ScanManager:
                 self.logger.error(f"Critical: Job {job_id} or Library missing.")
                 return
 
-            print(f"Starting SCAN job {job_id} for {library.name}")
-            self.logger.info(f"Starting SCAN job {job_id} for {library.name}")
+            print(f"Starting SCAN job {job_id} for {library.name} (Forced: {force})")
+            self.logger.info(f"Starting SCAN job {job_id} for {library.name} (Forced: {force})")
 
             # --- RUN SCANNER ---
             scanner = LibraryScanner(library, db)

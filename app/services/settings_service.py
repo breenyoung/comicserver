@@ -36,6 +36,33 @@ class SettingsService:
             ]
         },
         {
+            "key": "system.task.backup.interval",
+            "value": "weekly",
+            "category": "system",
+            "data_type": "select",
+            "label": "Auto-Backup Interval",
+            "description": "How often to perform a full database backup.",
+            "options": [
+                {"label": "Daily", "value": "daily"},
+                {"label": "Weekly", "value": "weekly"},
+                {"label": "Monthly", "value": "monthly"},
+                {"label": "Disabled", "value": "disabled"}
+            ]
+        },
+        {
+            "key": "system.task.cleanup.interval",
+            "value": "monthly",
+            "category": "system",
+            "data_type": "select",
+            "label": "Auto-Cleanup Interval",
+            "description": "How often to clear orphaned metadata (unused characters, tags, etc).",
+            "options": [
+                {"label": "Daily", "value": "daily"},
+                {"label": "Weekly", "value": "weekly"},
+                {"label": "Monthly", "value": "monthly"}
+            ]
+        },
+        {
             "key": "backup.retention_days", "value": "7",
             "category": "backup", "data_type": "int",
             "label": "Backup Retention (Days)"

@@ -4,7 +4,7 @@ from datetime import datetime
 from app.database import Base
 
 # Import the junction tables
-from app.models.tags import comic_characters, comic_teams, comic_locations
+from app.models.tags import comic_characters, comic_teams, comic_locations, comic_genres
 
 
 class Volume(Base):
@@ -61,6 +61,7 @@ class Comic(Base):
     characters = relationship("Character", secondary=comic_characters, back_populates="comics")
     teams = relationship("Team", secondary=comic_teams, back_populates="comics")
     locations = relationship("Location", secondary=comic_locations, back_populates="comics")
+    genres = relationship("Genre", secondary=comic_genres, back_populates="comics")
 
     # Reading list support
     alternate_series = Column(String)

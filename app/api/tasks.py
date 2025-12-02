@@ -39,3 +39,19 @@ async def run_backup_task(
         "message": "Backup created successfully",
         "details": result
     }
+
+@router.post("/refresh-descriptions")
+async def run_refresh_descriptions_task(
+        db: SessionDep,
+        admin: AdminUser
+):
+    """
+    Trigger enrichment of reading list descriptions from the seed file.
+    """
+    service = MaintenanceService(db)
+    stats = service.refresh_reading_list_descriptions()
+
+    return {
+        "message": "Enrichment complete",
+        "stats": stats
+    }

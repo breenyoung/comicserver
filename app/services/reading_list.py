@@ -2,13 +2,14 @@ import logging
 from sqlalchemy.orm import Session
 from typing import Optional, Dict
 from app.models import ReadingList, ReadingListItem, Comic
-
+from app.services.enrichment import EnrichmentService
 
 class ReadingListService:
     def __init__(self, db: Session):
         self.db = db
         self.list_cache: Dict[str, ReadingList] = {}
         self.logger = logging.getLogger(__name__)
+        self.enrichment = EnrichmentService()
 
     def get_or_create_reading_list(self, name: str) -> ReadingList:
         name = name.strip()
@@ -20,6 +21,15 @@ class ReadingListService:
 
         if not reading_list:
             reading_list = ReadingList(name=name, auto_generated=1)
+
+            # Attempt to enrich description
+            # Since this is async, we ideally await it.
+            # If this method is sync, we might need to run it synchronously or background it.
+            # For simplicity, let's assume we can run it:
+            description = self.enrichment.get_description(name)
+            if description:
+                reading_list.description = description
+
             self.db.add(reading_list)
             self.db.flush()
             print(f"Created reading list: {name}")

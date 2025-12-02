@@ -1,13 +1,16 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+
 from app.models.tags import Character, Team, Location
 from app.models.credits import Person
 from app.models.reading_list import ReadingList
 from app.models.collection import Collection
 
+from app.services.enrichment import EnrichmentService
+
 class MaintenanceService:
     def __init__(self, db: Session):
         self.db = db
+        self.enrichment = EnrichmentService()
 
     def cleanup_orphans(self) -> dict:
         """
@@ -50,3 +53,37 @@ class MaintenanceService:
 
         self.db.commit()
         return stats
+
+    def refresh_reading_list_descriptions(self) -> dict:
+        """
+        Iterate over auto-generated reading lists and attempt to populate
+        missing descriptions from the local seed file.
+        """
+        # Fetch lists that are auto-generated
+        # Optimization: You could filter(ReadingList.description == None)
+        # if you only want to fill gaps, but updating all allows you to
+        # fix typos by updating events.json.
+        lists = self.db.query(ReadingList).filter(ReadingList.auto_generated == True).all()
+
+        updated_count = 0
+
+        for r_list in lists:
+            # Synchronous lookup from local JSON
+            # We mock the async call since we know we are using the local sync method
+            # If you kept the async definition in EnrichmentService, you might need
+            # to run this loop differently, but for the local JSON version:
+
+            # Note: accessing private/internal method directly for sync usage
+            # or rely on the fact that get_description is effectively instant for local.
+            # Assuming you simplified EnrichmentService to be synchronous as discussed:
+            description = self.enrichment.get_description(r_list.name)
+
+            if description and description != r_list.description:
+                r_list.description = description
+                updated_count += 1
+
+        if updated_count > 0:
+            self.db.commit()
+
+        return {"updated": updated_count, "total_scanned": len(lists)}
+

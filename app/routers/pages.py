@@ -49,11 +49,11 @@ async def search(request: Request):
 @router.get("/collections", response_class=HTMLResponse)
 async def collections_view(request: Request):
     """Collections page"""
-    return templates.TemplateResponse("collections.html", {"request": request})
+    return templates.TemplateResponse("collections/collections.html", {"request": request})
 
 @router.get("/collections/{collection_id}", response_class=HTMLResponse)
 async def collection_detail(request: Request, collection_id: int):
-    return templates.TemplateResponse("collection_detail.html", {
+    return templates.TemplateResponse("collections/collection_detail.html", {
         "request": request,
         "collection_id": collection_id
     })
@@ -61,11 +61,11 @@ async def collection_detail(request: Request, collection_id: int):
 @router.get("/reading-lists", response_class=HTMLResponse)
 async def reading_lists_view(request: Request):
     """Reading lists page"""
-    return templates.TemplateResponse("reading_lists.html", {"request": request})
+    return templates.TemplateResponse("reading_lists/reading_lists.html", {"request": request})
 
 @router.get("/reading-lists/{reading_list_id}", response_class=HTMLResponse)
 async def reading_list_detail(request: Request, reading_list_id: int):
-    return templates.TemplateResponse("reading_list_detail.html", {
+    return templates.TemplateResponse("reading_lists/reading_list_detail.html", {
         "request": request,
         "reading_list_id": reading_list_id
     })

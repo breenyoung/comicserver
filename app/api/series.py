@@ -32,7 +32,7 @@ def comic_to_simple_dict(comic: Comic):
         "year": comic.year,
         "format": comic.format,
         "filename": comic.filename,
-        "thumbnail_path": f"/api/comics/{comic.id}/thumbnail"
+        "thumbnail_path": f"/api/comics/{comic.id}/thumbnail" # TODO: make relative url (no leading /) and let frontend decide base url
     }
 
 

@@ -56,6 +56,9 @@ async def get_comic_reader_init(comic_id: int,
     # --- STRATEGY PATTERN ---
     if context_type == "pull_list" and context_id:
         # 1. Pull List Strategy
+
+        context_label = db.query(PullList.name).filter(PullList.id == context_id).scalar()
+
         # Query items in THIS specific list, ordered by sort_order
         items = db.query(PullListItem.comic_id).filter(
             PullListItem.pull_list_id == context_id
@@ -66,6 +69,9 @@ async def get_comic_reader_init(comic_id: int,
 
     elif context_type == "reading_list" and context_id:
         # 2. Reading List Strategy (Fixes Armageddon 2001)
+
+        context_label = db.query(ReadingList.name).filter(ReadingList.id == context_id).scalar()
+
         items = db.query(ReadingListItem.comic_id).filter(
             ReadingListItem.reading_list_id == context_id
         ).order_by(ReadingListItem.position).all()
@@ -73,6 +79,9 @@ async def get_comic_reader_init(comic_id: int,
 
     elif context_type == "collection" and context_id:
         # 3. Collection Strategy (Thematic)
+
+        context_label = db.query(Collection.name).filter(Collection.id == context_id).scalar()
+
         # Collections usually don't have explicit order
         # Simplified Sort: Year -> Series -> Number
         items = db.query(CollectionItem.comic_id) \
@@ -90,6 +99,9 @@ async def get_comic_reader_init(comic_id: int,
 
     elif context_type == "series" and context_id:
         # 4. Series Strategy
+
+        context_label = db.query(Series.name).filter(Series.id == context_id).scalar()
+
         # Logic: Flatten ALL volumes in the series.
         # Sort by: Volume Number -> Float(Issue Number)
         # This allows seamless reading from Vol 1 #12 -> Vol 2 #1
@@ -106,6 +118,12 @@ async def get_comic_reader_init(comic_id: int,
 
     else:
         # 5. Default / Volume Strategy
+
+        # We need the Series name for this as well
+        v = db.query(Volume.series_id, Volume.volume_number).filter(Volume.id == context_id).first()
+        series_name = db.query(Series.name).filter(Series.id == v.series_id).scalar()
+        context_label = f"{series_name} (vol {v.volume_number})"
+
         # Used for context_type="volume" OR fallback
         # Logic: Sort all siblings in THIS volume by natural number
         # Note: This fixes your Annuals issue if we sort correctly here
@@ -146,7 +164,15 @@ async def get_comic_reader_init(comic_id: int,
         "number": comic.number,
         "page_count": page_count,
         "next_comic_id": next_id,
-        "prev_comic_id": prev_id
+        "prev_comic_id": prev_id,
+
+        # Context Stats
+        # We perform safe math in case the list is empty (edge case)
+        "context_position": current_idx + 1 if ids else 0,
+        "context_total": len(ids) if ids else 0,
+        "context_type": context_type,
+        "context_label": context_label
+
     }
 
 @router.get("/{comic_id}/page/{page_index}")

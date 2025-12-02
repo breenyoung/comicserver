@@ -177,7 +177,18 @@
             </button>
             <div class="flex flex-col overflow-hidden">
                 <span class="font-bold text-white truncate" x-text="`${meta.series_name} #${meta.number}`"></span>
-                <span class="text-xs text-gray-400 truncate" x-text="meta.title"></span>
+
+                <div class="flex items-center gap-2 text-xs truncate">
+
+                    <span class="text-xs text-gray-400 truncate" x-text="meta.title"></span>
+                    <template x-if="meta.context_total > 1">
+                        <span class="text-blue-400 font-medium bg-blue-900/30 px-1.5 rounded border border-blue-500/30"
+                              x-text="`${getContextLabel(meta.context_type)} / ${meta.context_label}: ${meta.context_position}/${meta.context_total}`">
+                        </span>
+                    </template>
+
+                </div>
+
             </div>
         </div>
 
@@ -729,6 +740,15 @@ function reader() {
             this.uiLocked = !this.uiLocked;
             window.comicServer.showToast(this.uiLocked ? "UI Pinned" : "UI Auto-Hide");
         },
+
+        getContextLabel(context_type) {
+            if(context_type === "pull_list") return "Pull List";
+            if(context_type === "reading_list") return "Reading List";
+            if(context_type === "collection") return "Collection";
+            if(context_type === "series") return "Series";
+            return "Volume";
+        },
+
 
     }
 }

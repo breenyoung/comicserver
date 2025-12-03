@@ -229,6 +229,41 @@
         x-transition:leave="transition ease-in duration-100"
         x-transition:leave-start="opacity-100 transform scale-100"
         x-transition:leave-end="opacity-0 transform scale-95" x-on:click.away="showSettings = false">
+
+        <h3 class="text-sm font-bold text-gray-400 uppercase mb-4">Layout</h3>
+
+        <div class="space-y-4 mb-6">
+            <div class="flex items-center justify-between">
+                <label class="text-sm">Double Page (d)</label>
+                <button
+                    x-on:click="viewMode = (viewMode === 'single' ? 'double' : 'single')"
+                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+                    :class="viewMode === 'double' ? 'bg-blue-600' : 'bg-gray-700'"
+                >
+                    <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                          :class="viewMode === 'double' ? 'translate-x-5' : 'translate-x-0'"></span>
+                </button>
+            </div>
+
+            <div class="flex items-center justify-between">
+                <label class="text-sm">Manga Mode (m)</label>
+                <button
+                    x-on:click="toggleMangaMode()"
+                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+                    :class="readDirection === 'rtl' ? 'bg-blue-600' : 'bg-gray-700'"
+                >
+                    <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                          :class="readDirection === 'rtl' ? 'translate-x-5' : 'translate-x-0'"></span>
+                </button>
+            </div>
+
+            <div x-show="viewMode === 'double'" class="flex items-center justify-between">
+                <label class="text-sm text-gray-400">Cover Offset</label>
+                <input type="checkbox" x-model="doublePageOffset" class="rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-0">
+            </div>
+
+        </div>
+
         <h3 class="text-sm font-bold text-gray-400 uppercase mb-4">Display Options</h3>
 
         <div class="space-y-4">
@@ -270,16 +305,38 @@
     </div>
 
     <div class="reader-content">
-        <div class="nav-zone left" x-on:click="prevPage()"></div>
-        <div class="nav-zone right" x-on:click="nextPage()"></div>
 
-        <img
-            id="current-page"
-            class="reader-page"
-            :src="currentPageUrl"
-            :style="imageStyles"
-            alt="Page"
-        >
+        <div class="nav-zone left" x-on:click="handleZoneClick('left')"></div>
+        <div class="nav-zone right" x-on:click="handleZoneClick('right')"></div>
+
+        <div class="flex items-center justify-center h-full w-full transition-all duration-300"
+                     :class="{
+                        'flex-row': readDirection === 'ltr',
+                        'flex-row-reverse': readDirection === 'rtl',
+                        'gap-0': true
+                     }">
+
+            <template x-if="pagesToDisplay[0]">
+                <img
+                    :src="getPageUrl(pagesToDisplay[0].index)"
+                    :class="imageClasses"
+                    :style="imageStyles"
+                    class="reader-page object-contain transition-transform duration-100"
+                    alt="Page"
+                >
+            </template>
+
+            <template x-if="pagesToDisplay[1]">
+                <img
+                    :src="getPageUrl(pagesToDisplay[1].index)"
+                    :class="imageClasses"
+                    :style="imageStyles"
+                    class="reader-page object-contain transition-transform duration-100"
+                    alt="Page Next"
+                >
+            </template>
+
+        </div>
 
         <div class="scrubber-wrapper" :class="{'controls-visible': shouldShowUI}" x-show="meta.page_count > 0">
 
@@ -391,6 +448,9 @@ function reader() {
         meta: { page_count: 0, next_comic_id: null, prev_comic_id: null },
         showSettings: false,
         fitMode: 'contain',
+        viewMode: 'single', // 'single', 'double'
+        readDirection: 'ltr', // 'ltr' (Western), 'rtl' (Manga)
+        doublePageOffset: true, // If true, Page 0 is separate (Cover mode)
         showGoto: false,
         gotoInputValue: 1,
         scrubberValue: 0,
@@ -412,6 +472,10 @@ function reader() {
         },
 
         init() {
+
+            // Load settings from local storage
+            this.viewMode = localStorage.getItem('reader_viewMode') || 'single';
+            this.readDirection = localStorage.getItem('reader_readDirection') || 'ltr';
 
             // Check for incognito flag immediately
             const params = new URLSearchParams(window.location.search);
@@ -438,6 +502,9 @@ function reader() {
 
             // Persist filters on change
             this.$watch('filters', val => localStorage.setItem('readerFilters', JSON.stringify(val)));
+            this.$watch('viewMode', val => localStorage.setItem('reader_viewMode', val));
+            this.$watch('readDirection', val => localStorage.setItem('reader_readDirection', val));
+
         },
 
         async loadInitData() {
@@ -488,14 +555,53 @@ function reader() {
             return queryString ? `${url}?${queryString}` : url;
         },
 
+        // Helper to construct URL
+        getPageUrl(index) {
+            if (index === undefined || index < 0 || index >= this.meta.page_count) return '';
+
+            // Points to reader.py endpoint
+            let url = window.url(`/api/comics/${this.comicId}/page/${index}`);
+
+            // Append Server-Side Filters
+            const params = new URLSearchParams();
+            if (this.filters.sharpen) params.append('sharpen', 'true');
+            if (this.filters.grayscale) params.append('grayscale', 'true');
+
+            // CACHE BUSTER: Add a timestamp based on the filter state
+            // This ensures a unique URL when settings change, forcing a re-fetch
+            // We use the values of the filters to create a semi-stable key,
+            // or just Date.now() if you want to force it every time (easiest for debugging).
+            params.append('_t', Date.now()); // Cache bust
+            const queryString = params.toString();
+            return queryString ? `${url}?${queryString}` : url;
+        },
+
+        // Helper for CSS classes
+        get imageClasses() {
+            // In double mode, each image takes up max 50% width
+            return this.viewMode === 'double' ? 'max-w-[50vw] max-h-screen' : 'max-w-full max-h-screen';
+        },
+
         get imageStyles() {
             // Combine Fit Mode and CSS Filters
             let styles = {};
 
             // Fit Mode
-            if (this.fitMode === 'contain') { styles.maxWidth = '100%'; styles.maxHeight = '100%'; styles.width='auto'; styles.height='auto'; }
-            else if (this.fitMode === 'width') { styles.width = '100%'; styles.height = 'auto'; styles.maxWidth = 'none'; styles.maxHeight = 'none'; }
-            else if (this.fitMode === 'height') { styles.height = '100%'; styles.width = 'auto'; styles.maxWidth = 'none'; styles.maxHeight = 'none'; }
+            //if (this.fitMode === 'contain') { styles.maxWidth = '100%'; styles.maxHeight = '100%'; styles.width='auto'; styles.height='auto'; }
+            //else if (this.fitMode === 'width') { styles.width = '100%'; styles.height = 'auto'; styles.maxWidth = 'none'; styles.maxHeight = 'none'; }
+            //else if (this.fitMode === 'height') { styles.height = '100%'; styles.width = 'auto'; styles.maxWidth = 'none'; styles.maxHeight = 'none'; }
+
+            // Fit Mode Logic
+            if (this.fitMode === 'contain') {
+                styles.height = '100vh';
+                styles.width = 'auto';
+            } else if (this.fitMode === 'width') {
+                styles.width = this.viewMode === 'double' ? '50vw' : '100vw';
+                styles.height = 'auto';
+            } else if (this.fitMode === 'height') {
+                styles.height = '100vh';
+                styles.width = 'auto';
+            }
 
             // Filters (Client Side)
             let filterString = `brightness(${this.filters.brightness}%) contrast(${this.filters.contrast}%)`;
@@ -505,19 +611,48 @@ function reader() {
         },
 
         nextPage() {
-            if (this.currentPage < this.meta.page_count - 1) {
+            let increment = 1;
+
+            // In Double Mode, we usually jump 2 pages
+            if (this.viewMode === 'double') {
+                // If currently on Cover (Page 0) with Offset, we only jump 1 to get to [1,2]
+                if (this.doublePageOffset && this.currentPage === 0) {
+                    increment = 1;
+                } else {
+                    increment = 2;
+                }
+            }
+
+            if (this.currentPage + increment < this.meta.page_count) {
+                this.currentPage += increment;
+                this.updateProgress();
+            } else if (this.currentPage < this.meta.page_count - 1) {
+                // Edge case: We are at [Last-1], jump 1 to [Last]
                 this.currentPage++;
                 this.updateProgress();
             } else if (this.meta.next_comic_id) {
-                // Optional: Auto-advance to next book
-                // if(confirm("Next Issue?")) this.goToBook(this.meta.next_comic_id);
                 window.comicServer.showToast("End of Book. Press ] for next issue.");
             }
         },
 
         prevPage() {
-            if (this.currentPage > 0) {
-                this.currentPage--;
+
+            let decrement = 1;
+
+            if (this.viewMode === 'double') {
+                // If we are at Page 1 (start of spread [1,2]), jumping back 1 goes to Cover [0]
+                if (this.doublePageOffset && this.currentPage === 1) {
+                    decrement = 1;
+                } else {
+                    decrement = 2;
+                }
+            }
+
+            if (this.currentPage - decrement >= 0) {
+                this.currentPage -= decrement;
+                this.updateProgress();
+            } else if (this.currentPage > 0) {
+                this.currentPage = 0;
                 this.updateProgress();
             }
         },
@@ -638,6 +773,12 @@ function reader() {
                     this.goToBook(this.meta.prev_comic_id);
                     break;
 
+                case 'd': // Toggle Double
+                case 'D':
+                    this.viewMode = this.viewMode === 'single' ? 'double' : 'single';
+                    window.comicServer.showToast(this.viewMode === 'double' ? "Double Page Mode" : "Single Page Mode");
+                    break;
+
                 case 'g':
                 case 'G':
                     e.preventDefault(); // Prevent accidental scrolling
@@ -647,6 +788,11 @@ function reader() {
                 case 'h':
                 case 'H':
                     this.toggleUiLock();
+                    break;
+
+                case 'm': // Toggle Manga
+                case 'M':
+                    this.toggleMangaMode();
                     break;
 
                 case 'Escape':
@@ -746,9 +892,60 @@ function reader() {
             if(context_type === "reading_list") return "Reading List";
             if(context_type === "collection") return "Collection";
             if(context_type === "series") return "Series";
-            return "Volume";
+            if(context_type === "volume") return "Volume";
+            return "";
         },
 
+        // CORE LOGIC: Which pages to render?
+        get pagesToDisplay() {
+
+            // 1. Single Mode
+            if (this.viewMode === 'single') {
+                return [{ index: this.currentPage }];
+            }
+
+            // 2. Double Mode
+            // Logic: Is the current page the "Cover" (Page 0) and do we want an offset?
+            // If Offset is ON, Page 0 is always single.
+            if (this.doublePageOffset && this.currentPage === 0) {
+                return [{ index: 0 }];
+            }
+
+            // Calculate the "Base" page (Must be Odd if offset is on, Even if not)
+            // Example with Offset (Standard Comic): [0], [1,2], [3,4]
+            // Example without Offset: [0,1], [2,3]
+
+            // Determine pair start
+            let p1 = this.currentPage;
+            let p2 = this.currentPage + 1;
+
+            // Boundary check
+            if (p2 >= this.meta.page_count) {
+                return [{ index: p1 }]; // Last page is single
+            }
+
+            return [{ index: p1 }, { index: p2 }];
+        },
+
+
+        handleZoneClick(zone) {
+            // Context Aware Clicking
+            // If LTR: Left = Prev, Right = Next
+            // If RTL: Left = Next, Right = Prev
+
+            if (this.readDirection === 'rtl') {
+                if (zone === 'left') this.nextPage();
+                else this.prevPage();
+            } else {
+                if (zone === 'left') this.prevPage();
+                else this.nextPage();
+            }
+        },
+
+        toggleMangaMode() {
+            this.readDirection = this.readDirection === 'ltr' ? 'rtl' : 'ltr';
+            window.comicServer.showToast(this.readDirection === 'rtl' ? "Manga Mode (RTL)" : "Western Mode (LTR)");
+        },
 
     }
 }

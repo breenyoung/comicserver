@@ -53,12 +53,12 @@
                 <h2 class="text-xl font-bold text-white flex items-center gap-2">
                     <span>📖</span> Continue Reading
                 </h2>
-                <a href="/continue-reading" class="text-xs text-blue-400 hover:text-white">View All</a>
+                <a :href="window.url('/continue-reading')" class="text-xs text-blue-400 hover:text-white">View All</a>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <template x-for="item in data?.continue_reading" :key="item.comic_id">
-                    <a :href="`/reader/${item.comic_id}`" class="flex bg-gray-800 rounded-lg overflow-hidden border border-gray-700 hover:border-blue-500 transition-colors group h-32 relative">
+                    <a :href="window.url(`/reader/${item.comic_id}`)" class="flex bg-gray-800 rounded-lg overflow-hidden border border-gray-700 hover:border-blue-500 transition-colors group h-32 relative">
                         <img :src="item.thumbnail" class="w-24 h-full object-cover">
                         
                         <div class="p-4 flex flex-col justify-center min-w-0">
@@ -72,7 +72,7 @@
                         </div>
                         
                         <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <svg class="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"/></svg>
+                            <span class="text-white font-bold bg-blue-600 px-3 py-1 text-sm rounded-full shadow-lg">Continue</span>
                         </div>
                     </a>
                 </template>
@@ -86,14 +86,14 @@
         <div class="space-y-4">
             <div class="flex justify-between items-center">
                 <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                    <span>📚</span> My Pull Lists
+                    <span>🗃️</span> My Pull Lists
                 </h2>
-                <a href="/pull-lists" class="text-xs text-blue-400 hover:text-white">View All</a>
+                <a :href="window.url('/pull-lists')" class="text-xs text-blue-400 hover:text-white">View All</a>
             </div>
 
             <div class="space-y-3">
                 <template x-for="list in data?.pull_lists" :key="list.id">
-                    <a :href="`/pull-lists/${list.id}`" class="block bg-gray-800 p-4 rounded-lg border border-gray-700 hover:bg-gray-750 hover:border-gray-500 transition-all">
+                    <a :href="window.url(`/pull-lists/${list.id}`)" class="block bg-gray-800 p-4 rounded-lg border border-gray-700 hover:bg-gray-750 hover:border-gray-500 transition-all">
                         <div class="flex justify-between items-center">
                             <span class="font-bold text-white" x-text="list.name"></span>
                             <span class="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded-full" x-text="list.count"></span>
@@ -101,7 +101,7 @@
                     </a>
                 </template>
                 
-                <button @click="window.location.href='/pull-lists'" class="w-full py-3 border border-gray-700 border-dashed rounded-lg text-gray-500 hover:text-white hover:border-gray-500 hover:bg-gray-800/50 transition-all text-sm">
+                <button x-on:click="window.location.href=window.url('/pull-lists')" class="w-full py-3 border border-gray-700 border-dashed rounded-lg text-gray-500 hover:text-white hover:border-gray-500 hover:bg-gray-800/50 transition-all text-sm">
                     + Create New List
                 </button>
             </div>

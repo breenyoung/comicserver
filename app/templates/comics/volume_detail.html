@@ -156,7 +156,7 @@
             <div class="flex border-b border-gray-700">
 
                 <button
-                    @click="switchTab('issues')"
+                    x-on:click="switchTab('issues')"
                     :class="activeTab === 'issues' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-gray-750'"
                     class="px-8 py-4 font-medium transition-colors"
                 >
@@ -165,7 +165,7 @@
 
                 <template x-if="!isStandalone && volume?.annual_count > 0">
                     <button
-                        @click="switchTab('annuals')"
+                        x-on:click="switchTab('annuals')"
                         :class="activeTab === 'annuals' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-gray-750'"
                         class="px-8 py-4 font-medium transition-colors"
                     >
@@ -175,7 +175,7 @@
 
                 <template x-if="!isStandalone && volume?.special_count > 0">
                     <button
-                        @click="switchTab('specials')"
+                        x-on:click="switchTab('specials')"
                         :class="activeTab === 'specials' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-gray-750'"
                         class="px-8 py-4 font-medium transition-colors"
                     >
@@ -194,7 +194,7 @@
                 </template>
 
                 <button
-                    @click="activeTab = 'details'"
+                    x-on:click="activeTab = 'details'"
                     :class="activeTab === 'details' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-gray-750'"
                     class="px-8 py-4 font-medium transition-colors"
                 >

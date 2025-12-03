@@ -1,0 +1,20 @@
+<div class="w-48 flex-shrink-0 group relative">
+    <a :href="window.url(`/reader/${item.comic_id}`)">
+        <div class="aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden shadow-lg border border-gray-700 relative">
+            <img :src="item.thumbnail" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+
+            <div class="absolute bottom-0 left-0 right-0 h-1.5 bg-gray-700">
+                <div class="h-full bg-blue-500" :style="`width: ${item.percentage}%`"></div>
+            </div>
+
+            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <span class="text-white font-bold bg-blue-600 px-3 py-1 text-sm rounded-full shadow-lg">Continue</span>
+            </div>
+        </div>
+
+        <div class="mt-2">
+            <h3 class="text-white font-bold text-sm truncate" x-text="item.series_name"></h3>
+            <p class="text-gray-400 text-xs" x-text="`Vol ${item.volume_number} #${item.number}`"></p>
+        </div>
+    </a>
+</div>

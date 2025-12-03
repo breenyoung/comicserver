@@ -36,6 +36,12 @@ class SettingsService:
             ]
         },
         {
+            "key": "ui.on_deck.staleness_weeks", "value": "4",
+            "category": "appearance", "data_type": "int",
+            "label": "On Deck Staleness (Weeks)",
+            "description": "Hide 'Continue Reading' items if not touched for this many weeks. Set to 0 to disable."
+        },
+        {
             "key": "system.task.backup.interval",
             "value": "weekly",
             "category": "system",

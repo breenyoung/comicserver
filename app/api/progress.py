@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional, Annotated
+from datetime import datetime, timedelta
 
+from app.core.settings_loader import get_cached_setting
 from app.api.deps import SessionDep, CurrentUser
 from app.models.reading_progress import ReadingProgress
 from app.services.reading_progress import ReadingProgressService
@@ -19,6 +21,54 @@ def get_progress_service(
     user: CurrentUser,
 ) -> ReadingProgressService:
     return ReadingProgressService(db, user_id=user.id)
+
+
+@router.get("/on-deck")
+async def get_on_deck_progress(
+        service: Annotated[ReadingProgressService, Depends(get_progress_service)],
+        limit: int = 10
+
+):
+    """
+    Get 'On Deck' items (In Progress), filtering out stale items based on settings.
+    """
+    # Get Setting (Default 4 weeks)
+    staleness_weeks = get_cached_setting("ui.on_deck.staleness_weeks", default=4)
+
+    # Calculate Cutoff
+    cutoff_date = None
+    if staleness_weeks > 0:
+        cutoff_date = datetime.utcnow() - timedelta(weeks=staleness_weeks)
+
+    # 3. Query via Service (We need to add this method to Service, or do ad-hoc query here)
+    # Since Service abstracts DB, let's do it cleanly via DB directly here for speed
+    # or add a method to Service. Let's do DB here since we have the session.
+
+    query = service.db.query(ReadingProgress).filter(
+        ReadingProgress.user_id == service.user_id,
+        ReadingProgress.completed == False,
+        ReadingProgress.current_page > 0  # Must have actually started
+    )
+
+    if cutoff_date:
+        query = query.filter(ReadingProgress.last_read_at >= cutoff_date)
+
+    progress_list = query.order_by(ReadingProgress.last_read_at.desc()).limit(limit).all()
+
+    results = []
+    for p in progress_list:
+        comic = p.comic
+        results.append({
+            "comic_id": comic.id,
+            "series_name": comic.volume.series.name,
+            "number": comic.number,
+            "volume_number": comic.volume.volume_number,
+            "percentage": p.progress_percentage,
+            "thumbnail": f"/api/comics/{comic.id}/thumbnail",
+            "last_read": p.last_read_at
+        })
+
+    return results
 
 @router.get("/{comic_id}")
 async def get_comic_progress(comic_id: int,
@@ -175,3 +225,6 @@ async def get_recent_progress(
         "total": len(results),
         "results": results
     }
+
+
+

@@ -5,6 +5,23 @@
 {% block content %}
 <div class="space-y-12" x-data="homePage()">
 
+
+    <div x-show="!loading.onDeck && onDeckSeries.length > 0">
+        <div class="flex items-center justify-between mb-4 border-b border-gray-700 pb-2">
+            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                <span>▶</span> Continue Reading
+            </h2>
+        </div>
+
+        <div class="flex space-x-6 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+            <template x-for="item in onDeckSeries" :key="item.comic_id">
+
+                {% include "partials/on_deck_card.html" %}
+
+            </template>
+        </div>
+    </div>
+
     <div class="flex items-center justify-between">
         <div>
             <h1 class="text-3xl font-bold text-white">Library</h1>
@@ -80,16 +97,21 @@ function homePage() {
         recentSeries: [],
         updatedSeries: [],
         starredSeries: [],
+        onDeckSeries: [],
 
         loading: {
             libraries: true,
             recent: true,
             updated: true,
-            starred: true
+            starred: true,
+            onDeck: true
         },
 
         get isLoading() {
-            return this.loading.libraries || this.loading.recent || this.loading.updated || this.loading.starred;
+            return this.loading.libraries || this.loading.recent
+                || this.loading.updated || this.loading.starred
+                || this.loading.onDeck
+                ;
         },
 
         init() {
@@ -97,6 +119,7 @@ function homePage() {
             this.fetchStarred();
             this.fetchRecent();
             this.fetchUpdated();
+            this.fetchOnDeck();
         },
 
         async fetchLibraries() {
@@ -110,7 +133,7 @@ function homePage() {
         async fetchStarred() {
             try {
                 // Fetch starred series sorted by updated (recently modified or starred)
-                const res = await fetch('/api/series/?only_starred=true&size=20');
+                const res = await fetch(window.url('/api/series/?only_starred=true&size=20'));
                 if (res.ok) {
                     const data = await res.json();
                     this.starredSeries = data.items;
@@ -122,7 +145,7 @@ function homePage() {
         async fetchRecent() {
             try {
                 // Fetch top 10 created descending
-                const res = await fetch('/api/series/?sort_by=created&sort_desc=true&size=10');
+                const res = await fetch(window.url('/api/series/?sort_by=created&sort_desc=true&size=10'));
                 if (res.ok) {
                     const data = await res.json();
                     this.recentSeries = data.items;
@@ -134,14 +157,26 @@ function homePage() {
         async fetchUpdated() {
             try {
                 // Fetch top 10 updated descending
-                const res = await fetch('/api/series/?sort_by=updated&sort_desc=true&size=10');
+                const res = await fetch(window.url('/api/series/?sort_by=updated&sort_desc=true&size=10'));
                 if (res.ok) {
                     const data = await res.json();
                     this.updatedSeries = data.items;
                 }
             } catch(e) { console.error(e); }
             finally { this.loading.updated = false; }
+        },
+
+        async fetchOnDeck() {
+            try {
+                const res = await fetch(window.url('/api/progress/on-deck'));
+                if (res.ok) {
+                    this.onDeckSeries = await res.json();
+                }
+            } catch(e) { console.error(e); }
+            finally { this.loading.onDeck = false; }
         }
+
+
     }
 }
 </script>

@@ -14,11 +14,38 @@ router = APIRouter()
 
 @router.get("/")
 async def list_reading_lists(db: SessionDep, current_user: CurrentUser):
-    """List all reading lists"""
-    reading_lists = db.query(ReadingList).all()
+    """List reading lists, hiding ones that are empty due to permissions."""
+
+    # Determine Permissions
+    allowed_ids = set()
+    is_superuser = current_user.is_superuser
+    if not is_superuser:
+        allowed_ids = {lib.id for lib in current_user.accessible_libraries}
+
+    # Fetch Lists with eager loading
+    reading_lists = db.query(ReadingList).options(
+        joinedload(ReadingList.items).joinedload(ReadingListItem.comic).joinedload(Comic.volume).joinedload(
+            Volume.series)
+    ).all()
+
 
     result = []
     for rl in reading_lists:
+
+        # Calculate "Visible Count"
+        visible_count = 0
+        if is_superuser:
+            visible_count = len(rl.items)
+        else:
+            visible_count = sum(
+                1 for item in rl.items
+                if item.comic and item.comic.volume.series.library_id in allowed_ids
+            )
+
+        # Hide if empty
+        if visible_count == 0:
+            continue
+
         result.append({
             "id": rl.id,
             "name": rl.name,

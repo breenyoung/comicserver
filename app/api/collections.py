@@ -4,7 +4,7 @@ from sqlalchemy import Float, func
 from typing import List, Annotated
 
 from app.core.comic_helpers import get_aggregated_metadata
-from app.api.deps import get_db, get_current_user
+from app.api.deps import SessionDep, CurrentUser
 from app.models.collection import Collection, CollectionItem
 from app.models.comic import Comic, Volume
 from app.models.series import Series
@@ -16,13 +16,43 @@ router = APIRouter()
 
 
 @router.get("/")
-async def list_collections(current_user: Annotated[User, Depends(get_current_user)],
-                           db: Session = Depends(get_db)):
-    """List all collections"""
-    collections = db.query(Collection).all()
+async def list_collections(current_user: CurrentUser, db: SessionDep):
+    """List collections, hiding ones that are empty due to permissions."""
+
+    # Determine Permissions
+    allowed_ids = set()
+    is_superuser = current_user.is_superuser
+    if not is_superuser:
+        allowed_ids = {lib.id for lib in current_user.accessible_libraries}
+
+    # Fetch Collections with eager loading to avoid N+1 during filtering
+    # We need the path: Collection -> Items -> Comic -> Volume -> Series (to get library_id)
+    collections = db.query(Collection).options(
+        joinedload(Collection.items).joinedload(CollectionItem.comic).joinedload(Comic.volume).joinedload(
+            Volume.series)
+    ).all()
 
     result = []
     for col in collections:
+
+        # Calculate "Visible Count"
+        # If superuser, everything is visible.
+        # If user, only items where series.library_id is in allowed_ids.
+
+        visible_count = 0
+        if is_superuser:
+            visible_count = len(col.items)
+        else:
+            # Filter in Python (fast enough for collections list)
+            visible_count = sum(
+                1 for item in col.items
+                if item.comic and item.comic.volume.series.library_id in allowed_ids
+            )
+
+        # Hide if empty
+        if visible_count == 0:
+            continue
+
         result.append({
             "id": col.id,
             "name": col.name,
@@ -40,8 +70,8 @@ async def list_collections(current_user: Annotated[User, Depends(get_current_use
 
 
 @router.get("/{collection_id}")
-async def get_collection(current_user: Annotated[User, Depends(get_current_user)],
-                         collection_id: int, db: Session = Depends(get_db)):
+async def get_collection(current_user: CurrentUser,
+                         collection_id: int, db: SessionDep):
     """Get a specific collection with all comics and aggregated details"""
     collection = db.query(Collection).filter(Collection.id == collection_id).first()
 
@@ -110,8 +140,8 @@ async def get_collection(current_user: Annotated[User, Depends(get_current_user)
 
 
 @router.delete("/{collection_id}")
-async def delete_collection(current_user: Annotated[User, Depends(get_current_user)],
-                            collection_id: int, db: Session = Depends(get_db)):
+async def delete_collection(current_user: CurrentUser,
+                            collection_id: int, db: SessionDep):
     """Delete a collection"""
     collection = db.query(Collection).filter(Collection.id == collection_id).first()
 

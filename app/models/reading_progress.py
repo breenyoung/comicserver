@@ -36,6 +36,11 @@ class ReadingProgress(Base):
     @property
     def progress_percentage(self) -> float:
         """Calculate reading progress as percentage"""
+
+        # Trust the completed flag above the math
+        if self.completed:
+            return 100.0
+
         if self.total_pages == 0:
             return 0.0
         return (self.current_page / self.total_pages) * 100

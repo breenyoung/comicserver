@@ -12,11 +12,10 @@ from app.api.deps import PaginationParams, PaginatedResponse
 # Import related models
 from app.models.comic import Comic, Volume
 from app.models.series import Series
-
 from app.models.collection import Collection, CollectionItem
 from app.models.reading_list import ReadingList, ReadingListItem
 from app.models.credits import Person, ComicCredit
-from app.models.tags import Character, Team, Location
+from app.models.tags import Character, Team, Location, Genre, comic_genres
 from app.models.interactions import UserSeries
 from app.models.reading_progress import ReadingProgress
 
@@ -37,6 +36,32 @@ def comic_to_simple_dict(comic: Comic):
         "thumbnail_path": f"/api/comics/{comic.id}/thumbnail" # TODO: make relative url (no leading /) and let frontend decide base url
     }
 
+# Helper to serialize Series
+def series_to_simple_dict(series, db):
+    """
+        Helper to serialize Series for the card UI.
+        Fetches the 'Smart Cover' to get the thumbnail and YEAR.
+    """
+    # This is a bit N+1, ideally we optimize or use a subquery,
+    # but for 10-20 items it's acceptable for v1
+
+    # 1. Construct query for comics in this series
+    base_query = db.query(Comic).join(Volume).filter(Volume.series_id == series.id)
+
+    # 2. Use smart cover (usually Issue #1) to get the representative Year and Thumbnail
+    thumb_comic = get_smart_cover(base_query)
+
+    # 3. Fallback if no smart cover found
+    if not thumb_comic:
+        thumb_comic = base_query.first()
+
+    return {
+        "id": series.id,
+        "name": series.name,
+        "start_year": thumb_comic.year if thumb_comic else None,
+        "thumbnail_path": f"/api/comics/{thumb_comic.id}/thumbnail" if thumb_comic else None, # TODO: make relative url (no leading /)
+        "read": True
+    }
 
 @router.get("/{series_id}")
 async def get_series_detail(series: SeriesDep, db: SessionDep, current_user: CurrentUser):
@@ -424,4 +449,203 @@ async def regenerate_thumbnails(
     background_tasks.add_task(_task)
 
     return {"message": "Thumbnail regeneration started"}
+
+
+@router.get("/{series_id}/recommendations")
+async def get_series_recommendations(
+        series_id: int,
+        db: SessionDep,
+        user: CurrentUser,
+        limit: int = 10
+):
+    """
+    Smart Recommendations Engine.
+    Returns a list of 'Lanes' based on metadata connections.
+    """
+    # 1. Fetch Source Series & Permissions
+    source = db.query(Series).filter(Series.id == series_id).first()
+    if not source:
+        return []  # Or 404
+
+    # RLS: Define visible series IDs
+    # We will filter ALL recommendation queries by this list to ensure security
+    visible_series_query = db.query(Series.id)
+    if not user.is_superuser:
+        allowed_ids = [l.id for l in user.accessible_libraries]
+        visible_series_query = visible_series_query.filter(Series.library_id.in_(allowed_ids))
+
+    # We execute this subquery in the filters below using .in_(...)
+    # OR we can join, but .in_ is often cleaner for "Security Filter" logic.
+
+    lanes = []
+
+    # Helper to get "Sample Comic" for metadata (Publisher, Writer, Group)
+    # We grab the first issue of the first volume
+    sample_comic = db.query(Comic).join(Volume).filter(Volume.series_id == series_id).first()
+
+    if not sample_comic:
+        return []
+
+    # --- STRATEGY 1: SERIES GROUP (Tightest Connection) ---
+    # e.g., "Hellboy", "B.P.R.D."
+    if sample_comic.series_group:
+        group_matches = (
+            db.query(Series)
+            .join(Volume).join(Comic)
+            .filter(Comic.series_group == sample_comic.series_group)
+            .filter(Series.id != series_id)  # Exclude self
+            .filter(Series.id.in_(visible_series_query))
+            .distinct()
+            .limit(limit)
+            .all()
+        )
+        if len(group_matches) >= 1:
+            lanes.append({
+                "title": f"More in '{sample_comic.series_group}'",
+                "items": [series_to_simple_dict(s, db) for s in group_matches]
+            })
+
+    # --- STRATEGY 2: TOP WRITERS (Personal Connection) (Iterative & Strict) ---
+    # Find the most frequent writer in this series
+    top_writers = (
+        db.query(Person.name)
+        .join(ComicCredit).join(Comic).join(Volume)
+        .filter(Volume.series_id == series_id)
+        .filter(ComicCredit.role == 'writer')
+        .group_by(Person.name)
+        .order_by(func.count(Person.id).desc())
+        .limit(3)
+        .all()
+    )
+
+    for row in top_writers:
+        writer_name = row[0]
+
+        writer_matches = (
+            db.query(Series)
+            .join(Volume).join(Comic).join(ComicCredit).join(Person)
+            .filter(Person.name == writer_name)
+            .filter(ComicCredit.role == 'writer')  # STRICT ROLE CHECK
+            .filter(Series.id != series_id)
+            .filter(Series.id.in_(visible_series_query))
+            .distinct()
+            .limit(limit)
+            .all()
+        )
+
+        if len(writer_matches) >= 3:
+            lanes.append({
+                "title": f"More by {writer_name}",
+                "items": [series_to_simple_dict(s, db) for s in writer_matches]
+            })
+            break
+
+    # --- STRATEGY 2b: TOP PENCILLERS (Visual Connection) (Iterative & Strict) ---
+    top_pencillers = (
+        db.query(Person.name)
+        .join(ComicCredit).join(Comic).join(Volume)
+        .filter(Volume.series_id == series_id)
+        .filter(ComicCredit.role == 'penciller')
+        .group_by(Person.name)
+        .order_by(func.count(Person.id).desc())
+        .limit(3)
+        .all()
+    )
+
+    for row in top_pencillers:
+        penciller_name = row[0]
+
+        # Avoid showing "More by Frank Miller (Art)" if we already have "More by Frank Miller"
+        if any(penciller_name in l['title'] for l in lanes):
+            continue
+
+        penciller_matches = (
+            db.query(Series)
+            .join(Volume).join(Comic).join(ComicCredit).join(Person)
+            .filter(Person.name == penciller_name)
+            .filter(ComicCredit.role == 'penciller')  # <--- STRICT ROLE CHECK
+            .filter(Series.id != series_id)
+            .filter(Series.id.in_(visible_series_query))
+            .distinct()
+            .limit(limit)
+            .all()
+        )
+
+        if len(penciller_matches) >= 3:
+            lanes.append({
+                "title": f"More by {penciller_name} (Art)",
+                "items": [series_to_simple_dict(s, db) for s in penciller_matches]
+            })
+            break
+
+
+    # --- STRATEGY 3: GENRE (Thematic Connection) ---
+    # Find primary genre
+    top_genre = (
+        db.query(Genre.name)
+        .join(comic_genres).join(Comic).join(Volume)
+        .filter(Volume.series_id == series_id)
+        .group_by(Genre.name)
+        .order_by(func.count(Comic.id).desc())
+        .first()
+    )
+
+    if top_genre:
+        genre_name = top_genre[0]
+        genre_matches = (
+            db.query(Series)
+            .join(Volume).join(Comic).join(comic_genres).join(Genre)
+            .filter(Genre.name == genre_name)
+            .filter(Series.id != series_id)
+            .filter(Series.id.in_(visible_series_query))
+            .distinct()
+            .limit(limit)
+            .all()
+        )
+        if len(genre_matches) >= 5:  # Higher threshold for genres as they are broad
+            lanes.append({
+                "title": f"More {genre_name} Comics",
+                "items": [series_to_simple_dict(s, db) for s in genre_matches]
+            })
+
+    # --- STRATEGY 4: PUBLISHER (Corporate Connection) ---
+    if sample_comic.publisher:
+        pub_matches = (
+            db.query(Series)
+            .join(Volume).join(Comic)
+            .filter(Comic.publisher == sample_comic.publisher)
+            .filter(Series.id != series_id)
+            .filter(Series.id.in_(visible_series_query))
+            .distinct()
+            .limit(limit)
+            .all()
+        )
+        # Only show if we haven't already filled the UI with specific stuff
+        # or if we have a lot of matches
+        if len(pub_matches) >= 5 and len(lanes) < 3:
+            lanes.append({
+                "title": f"More from {sample_comic.publisher}",
+                "items": [series_to_simple_dict(s, db) for s in pub_matches]
+            })
+
+    # --- STRATEGY 5: RECENT IN LIBRARY (Fallback) ---
+    # If we have very few recommendations, show "New in this Library"
+    if len(lanes) < 2:
+        lib_matches = (
+            db.query(Series)
+            .filter(Series.library_id == source.library_id)
+            .filter(Series.id != series_id)
+            .filter(Series.id.in_(visible_series_query))
+            .order_by(Series.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        if lib_matches:
+            lanes.append({
+                "title": f"New in {source.library.name}",
+                "items": [series_to_simple_dict(s, db) for s in lib_matches]
+            })
+
+    return lanes
+
 

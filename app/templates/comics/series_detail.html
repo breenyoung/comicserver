@@ -399,6 +399,57 @@
 
     </div>
 
+
+
+
+
+<div x-data="recommendations({{ series_id }})" x-show="lanes.length > 0" x-cloak class="mt-12 space-y-12">
+
+    <template x-for="lane in lanes" :key="lane.title">
+        <div>
+            <div class="flex items-center justify-between mb-4 border-b border-gray-700 pb-2">
+                <h2 class="text-xl font-bold text-white" x-text="lane.title"></h2>
+            </div>
+
+            <div class="flex space-x-6 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+
+                <template x-for="series in lane.items" :key="series.id">
+                {% include "partials/series_card.html" %}
+                </template>
+
+            </div>
+        </div>
+    </template>
+
+</div>
+
+
+    <script>
+function recommendations(seriesId) {
+    return {
+        lanes: [],
+
+        async init() {
+            try {
+                const res = await fetch(window.url(`/api/series/${seriesId}/recommendations`));
+                if(res.ok) {
+                    this.lanes = await res.json();
+                }
+            } catch(e) {
+                console.error("Failed to load recommendations", e);
+            }
+        }
+    }
+}
+</script>
+
+
+
+
+
+
+
+
 </div>
 
 

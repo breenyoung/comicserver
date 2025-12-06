@@ -26,16 +26,20 @@ class ThumbnailService:
         query = self.db.query(Comic).join(Comic.volume).join(Series).filter(Series.library_id == self.library_id)
 
         if not force:
-            # Only get ones missing paths
-            query = query.filter(Comic.thumbnail_path == None)
+            # Smart Filter: Get comics missing thumbnails OR missing colors
+            # This ensures we backfill colors for existing comics too.
+            query = query.filter((Comic.thumbnail_path == None) | (Comic.color_primary == None))
 
         comics = query.all()
 
         stats = {"processed": 0, "errors": 0, "skipped": 0}
 
         for comic in comics:
-            # Double check file existence if path exists (unless forcing)
-            if not force and comic.thumbnail_path and Path(comic.thumbnail_path).exists():
+            # Double check existence (if not forcing)
+            has_thumb = comic.thumbnail_path and Path(str(comic.thumbnail_path)).exists()
+            has_colors = comic.color_primary is not None
+
+            if not force and has_thumb and has_colors:
                 stats["skipped"] += 1
                 continue
 
@@ -43,12 +47,20 @@ class ThumbnailService:
                 # Define path
                 target_path = Path(f"./storage/cover/comic_{comic.id}.webp")
 
-                # Generate
-                success = self.image_service.generate_thumbnail(comic.file_path, target_path)
+                # Generates WebP AND returns Color Palette
+                result = self.image_service.process_cover(str(comic.file_path), target_path)
 
-                if success:
+                if result['success']:
                     comic.thumbnail_path = str(target_path)
-                    # Commit every item or batch (e.g. every 10)
+
+                    # Update Colors from result
+                    if result.get('palette'):
+                        palette = result['palette']
+                        comic.color_primary = palette.get('primary')
+                        comic.color_secondary = palette.get('secondary')
+                        comic.color_palette = palette
+
+                    # Commit periodically or per item (Per item is safer for long jobs)
                     self.db.commit()
                     stats["processed"] += 1
                 else:
@@ -56,6 +68,7 @@ class ThumbnailService:
 
             except Exception as e:
                 print(f"Thumbnail error {comic.id}: {e}")
+                self.logger.error(f"Thumbnail error {comic.id}: {e}")
                 stats["errors"] += 1
 
         return stats
@@ -76,11 +89,19 @@ class ThumbnailService:
             try:
                 target_path = Path(f"./storage/cover/comic_{comic.id}.webp")
 
-                # Always generate (Overwrites existing)
-                success = self.image_service.generate_thumbnail(comic.file_path, target_path)
+                # Force regeneration
+                result = self.image_service.process_cover(comic.file_path, target_path)
 
-                if success:
+
+                if result['success']:
                     comic.thumbnail_path = str(target_path)
+
+                    if result.get('palette'):
+                        palette = result['palette']
+                        comic.color_primary = palette.get('primary')
+                        comic.color_secondary = palette.get('secondary')
+                        comic.color_palette = palette
+
                     self.db.commit()
                     stats["processed"] += 1
                 else:
@@ -92,5 +113,3 @@ class ThumbnailService:
                 stats["errors"] += 1
 
         return stats
-
-

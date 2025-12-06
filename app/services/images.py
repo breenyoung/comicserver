@@ -17,6 +17,71 @@ class ImageService:
         self.thumbnail_size: tuple[float, float] = settings.thumbnail_size
         self.avatar_size: tuple[float, float] = settings.avatar_size
 
+    def process_cover(self, comic_path: str, thumbnail_path: Path) -> dict:
+        """
+        Optimized Workflow:
+        1. Open Archive (Expensive I/O) -> Extract Cover
+        2. Calculate Colors (CPU) using a small resized copy
+        3. Resize & Save Thumbnail (CPU/Disk) using the original high-res data
+
+        Returns: { "success": bool, "palette": dict }
+        """
+        result = {"success": False, "palette": None}
+
+        try:
+            # 1. Get Raw Bytes (Reuse existing logic, force raw)
+            # This handles the archive opening and file detection
+            cover_bytes, success, _ = self.get_page_image(comic_path, 0, transcode_webp=False)
+
+            if not success or not cover_bytes:
+                return result
+
+            # 2. Load into Pillow
+            img = Image.open(BytesIO(cover_bytes))
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+
+            # 3. Extract Colors (Run ColorThief on a small copy)
+            # Optimization: Resizing to 150px makes ColorThief 10x faster with 99% accuracy
+            small_img = img.copy()
+            small_img.thumbnail((150, 150))
+
+            # ColorThief needs a file-like object
+            small_bytes = BytesIO()
+            small_img.save(small_bytes, format='JPEG')
+
+            color_thief = ColorThief(small_bytes)
+            # Get 5 colors
+            raw_palette = color_thief.get_palette(color_count=5, quality=10)
+
+            def rgb_to_hex(rgb):
+                return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
+
+            result['palette'] = {
+                'primary': rgb_to_hex(raw_palette[0]),
+                'secondary': rgb_to_hex(raw_palette[1]),
+                'accent1': rgb_to_hex(raw_palette[2]),
+                'accent2': rgb_to_hex(raw_palette[3]) if len(raw_palette) > 3 else None,
+                'accent3': rgb_to_hex(raw_palette[4]) if len(raw_palette) > 4 else None
+            }
+
+            # 4. Generate Thumbnail (Resize the original high-res img)
+            # We do this LAST so we don't accidentally use the tiny 150px image
+            width, height = self.thumbnail_size
+            img.thumbnail((width, height), Image.Resampling.LANCZOS)
+
+            # Save
+            thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
+            img.save(thumbnail_path, format='WEBP', quality=85)
+
+            result['success'] = True
+            return result
+
+        except Exception as e:
+            print(f"Error processing cover for {Path(comic_path).name}: {e}")
+            return result
+
+
     def get_page_image(self, comic_path: str, page_index: int,
                        sharpen: bool = False,
                        grayscale: bool = False,
@@ -64,8 +129,7 @@ class ImageService:
 
                 # Logic: Should we Transcode?
                 # Only if requested AND image is large (>500KB) AND not already WebP
-                #needs_transcode = transcode_webp and original_size > 500_000 and mime_type != "image/webp"
-                needs_transcode = transcode_webp and original_size > 0 and mime_type != "image/webp"
+                needs_transcode = transcode_webp and original_size > 500_000 and mime_type != "image/webp"
 
                 # FAST PATH: If no processing needed, return raw bytes
                 if not sharpen and not grayscale and not needs_transcode:
@@ -243,56 +307,5 @@ class ImageService:
         except Exception as e:
             print(f"Color palette extraction failed for {comic_path}: {e}")
             return None
-
-    def extract_dominant_colors(self, comic_path: str) -> Tuple[Optional[str], Optional[str]]:
-        """
-        Extract primary and secondary dominant colors from the comic cover.
-        Returns: (Primary Hex, Secondary Hex) or (None, None)
-        """
-        try:
-            # 1. Get Cover Bytes
-            cover_bytes, success, _ = self.get_page_image(comic_path, 0, transcode_webp=False)
-            if not success or not cover_bytes:
-                return None, None
-
-            # 2. Open & Resize (Speed Optimization)
-            img = Image.open(BytesIO(cover_bytes))
-            img.thumbnail((150, 150))  # Reduce processing time
-
-            # 3. Quantize to reduce palette (e.g., 5 colors)
-            # method=2 (Fast Octree) is usually sufficient and faster
-            q_img = img.quantize(colors=5, method=2)
-
-            # 4. Get Palette
-            # getpalette() returns [r,g,b, r,g,b, ...]
-            palette = q_img.getpalette()
-
-            # We need to find the most frequent colors.
-            # Pillow's histogram on a quantized image returns counts for indices.
-            color_counts = sorted(q_img.getcolors(), key=lambda x: x[0], reverse=True)
-
-            # Helper to convert RGB to Hex
-            def rgb_to_hex(r, g, b):
-                return f"#{r:02x}{g:02x}{b:02x}"
-
-            # Extract Top 2
-            # We iterate to skip "boring" colors if you wanted, but for V1 we just take top 2.
-            colors = []
-            for count, index in color_counts[:2]:
-                # Palette is a flat list, so index * 3 gives the start of the RGB triplet
-                start = index * 3
-                r, g, b = palette[start], palette[start + 1], palette[start + 2]
-                colors.append(rgb_to_hex(r, g, b))
-
-            # Pad if only 1 color found
-            if len(colors) == 1:
-                colors.append(colors[0])
-
-            return (colors[0], colors[1]) if colors else (None, None)
-
-        except Exception as e:
-            print(f"Color extraction failed for {comic_path}: {e}")
-            return None, None
-
 
 

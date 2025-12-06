@@ -263,11 +263,11 @@ class LibraryScanner:
         )
 
         # Extract Colors
-        palette_dict = self.image_service.extract_palette(comic.file_path)
+        #palette_dict = self.image_service.extract_palette(comic.file_path)
         #primary, secondary = self.image_service.extract_dominant_colors(comic.file_path)
-        comic.color_primary = palette_dict['primary']
-        comic.color_secondary = palette_dict['secondary']
-        comic.color_palette = palette_dict
+        #comic.color_primary = palette_dict['primary']
+        #comic.color_secondary = palette_dict['secondary']
+        #comic.color_palette = palette_dict
 
 
         self.db.add(comic)
@@ -393,12 +393,12 @@ class LibraryScanner:
         series.updated_at = datetime.now(timezone.utc)
 
         # Extract colors only if missing or if force update
-        if not comic.color_primary:
-            palette_dict = self.image_service.extract_palette(comic.file_path)
+        #if not comic.color_primary:
+        #    palette_dict = self.image_service.extract_palette(comic.file_path)
             # primary, secondary = self.image_service.extract_dominant_colors(comic.file_path)
-            comic.color_primary = palette_dict['primary']
-            comic.color_secondary = palette_dict['secondary']
-            comic.color_palette = palette_dict
+        #    comic.color_primary = palette_dict['primary']
+        #    comic.color_secondary = palette_dict['secondary']
+        #    comic.color_palette = palette_dict
 
 
         # NO COMMIT HERE - handled by batch loop

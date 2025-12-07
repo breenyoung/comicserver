@@ -43,13 +43,35 @@
                         </td>
                         <td class="px-6 py-4 text-sm text-gray-400" x-text="formatDate(user.last_login)"></td>
                         <td class="px-6 py-4 text-right space-x-2">
-                            <button @click="openEditModal(user)" class="text-blue-400 hover:text-white text-sm font-medium transition-colors">Edit</button>
-                            <button @click="deleteUser(user)" class="text-red-400 hover:text-white text-sm font-medium transition-colors">Delete</button>
+                            <button x-on:click="openEditModal(user)" class="text-blue-400 hover:text-white text-sm font-medium transition-colors">Edit</button>
+                            <button x-bind:disabled="user.id === 1" x-bind:title="user.id === 1 ? 'Cannot delete builtin admin user' : ''" x-on:click="deleteUser(user)" class="text-sm font-medium transition-colors" x-bind:class="user.id === 1 ? 'text-gray-600 cursor-not-allowed' : 'text-red-400 hover:text-white'">Delete</button>
                         </td>
                     </tr>
                 </template>
             </tbody>
         </table>
+    </div>
+
+    <div class="mt-12 flex justify-center items-center space-x-4 border-t border-gray-700 pt-6">
+        <button
+            x-on:click="changePage(currentPage - 1)"
+            x-bind:disabled="currentPage === 1"
+            class="px-4 py-2 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors border border-gray-600"
+        >
+            Previous
+        </button>
+
+        <span class="text-gray-400">
+            Page <span class="text-white font-bold" x-text="currentPage"></span> of <span x-text="Math.ceil(totalItems / pageSize)"></span>
+        </span>
+
+        <button
+            x-on:click="changePage(currentPage + 1)"
+            x-bind:disabled="currentPage >= Math.ceil(totalItems / pageSize)"
+            class="px-4 py-2 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors border border-gray-600"
+        >
+            Next
+        </button>
     </div>
 
     <div x-show="showAddModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50" style="display: none;" x-transition.opacity>
@@ -101,14 +123,19 @@
                     <input type="password" x-model="editingUser.password" placeholder="Leave blank to keep current" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white focus:border-blue-500 outline-none">
                 </div>
 
+                <div>
+                    <label class="block text-xs text-gray-500 uppercase mb-1">Email</label>
+                    <input type="email" x-model="editingUser.email" placeholder="Email" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white focus:border-blue-500 outline-none" required="required">
+                </div>
+
                 <div class="space-y-2 pt-2">
                     <div class="flex items-center gap-2">
-                        <input type="checkbox" x-model="editingUser.is_active" id="edit_is_active" class="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500">
-                        <label for="edit_is_active" class="text-gray-300 select-none">Account Active</label>
+                        <input type="checkbox" x-model="editingUser.is_active" id="edit_is_active" class="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500" x-bind:class="editingUser.id === 1 ? 'opacity-50 pointer-events-none' : ''">
+                        <label for="edit_is_active" class="text-gray-300 select-none" x-bind:class="editingUser.id === 1 ? 'opacity-50 pointer-events-none' : ''">Account Active</label>
                     </div>
                     <div class="flex items-center gap-2">
-                        <input type="checkbox" x-model="editingUser.is_superuser" id="edit_is_admin" class="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500">
-                        <label for="edit_is_admin" class="text-gray-300 select-none">Is Admin? (Full Access)</label>
+                        <input type="checkbox" x-model="editingUser.is_superuser" id="edit_is_admin" class="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500" x-bind:class="editingUser.id === 1 ? 'opacity-50 pointer-events-none' : ''">
+                        <label for="edit_is_admin" class="text-gray-300 select-none" x-bind:class="editingUser.id === 1 ? 'opacity-50 pointer-events-none' : ''">Is Admin? (Full Access)</label>
                     </div>
                 </div>
 
@@ -131,8 +158,8 @@
                 </div>
 
                 <div class="flex justify-end gap-2 mt-6">
-                    <button @click="showEditModal = false" class="text-gray-400 hover:text-white px-4 py-2 transition-colors">Cancel</button>
-                    <button @click="saveUser()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors shadow-lg">Save Changes</button>
+                    <button x-on:click="showEditModal = false" class="text-gray-400 hover:text-white px-4 py-2 transition-colors">Cancel</button>
+                    <button x-on:click="saveUser()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors shadow-lg">Save Changes</button>
                 </div>
             </div>
         </div>
@@ -152,7 +179,12 @@ function userManager() {
 
         // Data Models
         newUser: { username: '', email: '', password: '', is_superuser: false, library_ids: [] },
-        editingUser: { id: null, username: '', password: '', is_superuser: false, is_active: true, library_ids: [] },
+        editingUser: { id: null, username: '', password: '', email: '', is_superuser: false, is_active: true, library_ids: [] },
+
+        // Pagination State
+        currentPage: 1,
+        pageSize: 20,
+        totalItems: 0,
 
         init() {
             this.loadUsers();
@@ -161,8 +193,12 @@ function userManager() {
 
         async loadUsers() {
             try {
-                const res = await fetch(window.url('/api/users/'));
-                if (res.ok) this.users = await res.json();
+                const res = await fetch(window.url(`/api/users?page=${this.currentPage}&size=${this.pageSize}`));
+                if (res.ok) {
+                    const data = await res.json();
+                    this.users = data.items;
+                    this.totalItems = data.total;
+                }
             } catch(e) { console.error(e); }
         },
 
@@ -179,7 +215,7 @@ function userManager() {
         },
 
         async createUser() {
-            const res = await fetch(window.url('/api/users/'), {
+            const res = await fetch(window.url('/api/users'), {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(this.newUser)
@@ -189,7 +225,8 @@ function userManager() {
                 this.loadUsers();
             } else {
                 const err = await res.json();
-                alert("Failed to create user: " + (err.detail || "Unknown error"));
+                const message = err.detail?.[0]?.msg;
+                window.showToast(`Failed to create user: ${message || 'Unknown error'}`, 'error');
             }
         },
 
@@ -200,6 +237,7 @@ function userManager() {
                 id: user.id,
                 username: user.username,
                 password: '', // Blank by default
+                email: user.email,
                 is_superuser: user.is_superuser,
                 is_active: user.is_active,
                 // Ensure we handle the list of IDs from the API response
@@ -211,6 +249,7 @@ function userManager() {
         async saveUser() {
             // Prepare payload (exclude empty password)
             const payload = {
+                email: this.editingUser.email,
                 is_superuser: this.editingUser.is_superuser,
                 is_active: this.editingUser.is_active,
                 library_ids: this.editingUser.library_ids
@@ -228,17 +267,27 @@ function userManager() {
 
             if (res.ok) {
                 this.showEditModal = false;
-                this.loadUsers();
+                window.showToast('User updated successfully.', 'success');
+                await this.loadUsers();
             } else {
-                alert("Failed to update user");
+                const err = await res.json();
+                const message = err.detail?.[0]?.msg;
+                window.showToast(`Failed to update user: ${message || 'Unknown error'}`, 'error');
             }
         },
 
         async deleteUser(user) {
             if (!confirm(`Delete user ${user.username}? This will remove their reading history.`)) return;
             const res = await fetch(window.url(`/api/users/${user.id}`), { method: 'DELETE' });
-            if (res.ok) this.loadUsers();
-            else alert("Error deleting user");
+            if (res.ok) {
+                window.showToast('User deleted successfully.', 'success');
+                await this.loadUsers();
+            }
+            else {
+                const err = await res.json();
+                const message = err.detail?.[0]?.msg;
+                window.showToast(`Error deleting user: ${message || 'Unknown error'}`, 'error');
+            }
         },
 
         formatDate(dateStr) {
@@ -249,7 +298,17 @@ function userManager() {
         formatLibraryCount(user) {
             if (!user.accessible_library_ids || user.accessible_library_ids.length === 0) return 'None';
             return `${user.accessible_library_ids.length} Allowed`;
-        }
+        },
+
+        changePage(newPage) {
+            if (newPage < 1) return;
+            const maxPage = Math.ceil(this.totalItems / this.pageSize);
+            if (newPage > maxPage) return;
+
+            this.currentPage = newPage;
+            this.loadUsers();
+        },
+
     }
 }
 </script>

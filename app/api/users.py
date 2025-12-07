@@ -1,15 +1,16 @@
 import os
 import shutil
-from fastapi import APIRouter, status, HTTPException, UploadFile, File
+from fastapi import APIRouter, status, HTTPException, UploadFile, File, Depends
 from fastapi.responses import FileResponse
+from sqlalchemy.orm import joinedload
 from typing import List, Annotated, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from pathlib import Path
 from sqlalchemy import func
 
 
-from app.api.deps import SessionDep, AdminUser, CurrentUser
+from app.api.deps import SessionDep, AdminUser, CurrentUser, PaginatedResponse, PaginationParams
 from app.config import settings
 from app.core.comic_helpers import get_reading_time
 from app.core.security import verify_password, get_password_hash
@@ -26,18 +27,32 @@ router = APIRouter()
 MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024 # 5 MB
 
 # Schemas
-class UserCreateRequest(BaseModel):
+
+class UserBase(BaseModel):
+    email: str | None = None
+    username: str | None = None
+    password: str | None = None
+
+    @field_validator("email", "username", "password")
+    def non_empty_if_provided(cls, v):
+        if v is not None and not v.strip():
+            raise ValueError("Field cannot be empty")
+        return v
+
+
+class UserCreateRequest(UserBase):
     username: str
     email: str
     password: str
     is_superuser: bool = False
-    library_ids: List[int] = []
+    library_ids: List[int] = Field(default_factory=list)
 
-class UserUpdateRequest(BaseModel):
-    password: Optional[str] = None
-    is_superuser: Optional[bool] = None
-    is_active: Optional[bool] = None
-    library_ids: Optional[List[int]] = None
+class UserUpdateRequest(UserBase):
+    password: str | None = None
+    email: str
+    is_superuser: bool | None = None
+    is_active: bool | None = None
+    library_ids: List[int] | None = None
 
 
 class UserListResponse(BaseModel):
@@ -205,21 +220,42 @@ async def update_password(
     return {"status": "success", "message": "Password updated successfully"}
 
 # 1. List Users
-@router.get("/", response_model=List[UserListResponse])
+@router.get("/", response_model=PaginatedResponse)
 async def list_users(
         db: SessionDep,
-        admin: AdminUser
+        admin: AdminUser,
+        params: Annotated[PaginationParams, Depends()],
 ):
-    users = db.query(User).all()
+
+    query = db.query(User)
+    total = query.count()
+
+    users = query.order_by(func.lower(User.username)).options(joinedload(User.accessible_libraries)).offset(params.skip).limit(params.size).all()
+
     # Helper to format response with IDs
     results = []
     for u in users:
         results.append({
-            **u.__dict__,
+            "id": u.id,
+            "username": u.username,
+            "is_active": u.is_active,
+            "is_superuser": u.is_superuser,
+            "email": u.email,
+            "created_at": u.created_at,
+            "last_login": u.last_login,
             "accessible_library_ids": [lib.id for lib in u.accessible_libraries]
         })
 
-    return users
+
+    return {
+        "total": total,
+        "page": params.page,
+        "size": params.size,
+        "items": results
+    }
+
+
+
 
 
 # 2. Create User (Admin Only)
@@ -229,7 +265,7 @@ async def create_user(
         db: SessionDep,
         admin: AdminUser
 ):
-    existing = db.query(User).filter(User.username == user_in.username).first()
+    existing = db.query(User).filter(func.lower(User.username) == user_in.username.lower()).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username already exists")
 
@@ -268,6 +304,8 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    if updates.email:
+        user.email = updates.email
     if updates.password:
         user.hashed_password = get_password_hash(updates.password)
     if updates.is_superuser is not None:

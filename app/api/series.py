@@ -83,8 +83,8 @@ async def get_series_detail(series: SeriesDep, db: SessionDep, current_user: Cur
     Get series summary including Related content and Metadata Details.
     """
 
-    # 1. Get Volumes
-    volumes = db.query(Volume).filter(Volume.series_id == series.id).all()
+    # 1. Get Volumes (sorted by volume_number)
+    volumes = db.query(Volume).filter(Volume.series_id == series.id).order_by(Volume.volume_number).all()
     volume_ids = [v.id for v in volumes]
 
     if not volume_ids:

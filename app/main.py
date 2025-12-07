@@ -8,6 +8,8 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+
+from app.core.security import get_redirect_url
 from app.core.templates import templates
 from app.database import engine, Base
 from app.config import settings
@@ -156,12 +158,14 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             content={"detail": exc.detail},
             headers=exc.headers  # CRITICAL: This passes the 'WWW-Authenticate' header
         )
-    # --- FIX END ---
+
 
     # Standard Web UI Logic
     # If HTML request and 401, redirect to Login
     if exc.status_code == 401 and "text/html" in request.headers.get("accept", ""):
-        return RedirectResponse(url="/login")
+
+        return_url = get_redirect_url(request.url.path, request.url.query)
+        return RedirectResponse(url=f"/login?next={return_url}")
 
     if "text/html" in request.headers.get("accept", ""):
         return templates.TemplateResponse(

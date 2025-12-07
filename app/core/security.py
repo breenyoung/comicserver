@@ -3,6 +3,7 @@ from typing import Optional, Any, Union
 from jose import jwt
 from passlib.context import CryptContext
 import hashlib
+from urllib.parse import quote
 from app.config import settings
 
 # Setup password hashing context (bcrypt)
@@ -40,3 +41,15 @@ def get_password_hash(password: str) -> str:
 
     # 4. HASH THE HEX STRING (Always 64 chars, safe for bcrypt)
     return pwd_context.hash(pre_hash)
+
+
+def get_redirect_url(requested_url_path: str, requested_url_query: str = None) -> str | None:
+
+    if not requested_url_path:
+        return None
+
+    return_url = requested_url_path
+    if requested_url_query:
+        return_url += f"?{requested_url_query}"
+
+    return quote(return_url)

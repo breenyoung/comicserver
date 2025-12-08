@@ -14,6 +14,10 @@
         background: #000;
         display: flex; flex-direction: column;
         z-index: 100;
+        /* On some mobile browsers (like Chrome Android or Safari iOS),
+        swiping from the very edge of the screen triggers "Back" in the browser history.
+         */
+        touch-action: pan-y; /* Allows vertical scroll but captures horizontal swipes */
     }
 
     /* Toolbar */
@@ -164,7 +168,10 @@
 
 {% block content %}
 
-<div class="reader-container" x-data="reader()" tabindex="0" x-on:keydown.window="handleKey($event)">
+<div class="reader-container" x-data="reader()" tabindex="0"
+     x-on:keydown.window="handleKey($event)"
+     x-on:touchstart="handleTouchStart($event)"
+     x-on:touchend="handleTouchEnd($event)">
 
     <div class="reader-toolbar">
 
@@ -491,6 +498,13 @@ function reader() {
         currentPage: 0,
         meta: { page_count: 0, next_comic_id: null, prev_comic_id: null },
 
+        // SWIPE STATE
+        touchStartX: 0,
+        touchStartY: 0,
+        minSwipeDistance: 50, // Minimum pixels to count as a swipe
+        maxSwipeTime: 500,    // Maximum ms to count as a swipe (prevents slow drags)
+        startTime: 0,
+
         // --- Settings ---
         showSettings: false,
         fitMode: 'contain',
@@ -533,6 +547,7 @@ function reader() {
             this.fitMode = localStorage.getItem('reader_fitMode') || 'contain';
             this.doublePageOffset = JSON.parse(localStorage.getItem('reader_doublePageOffset') ?? 'true');
             this.showSpineShadow = JSON.parse(localStorage.getItem('reader_showSpineShadow') ?? 'true');
+            this.uiLocked = JSON.parse(localStorage.getItem('reader_uiLocked') ?? 'false');
 
             // Check for incognito flag immediately
             const params = new URLSearchParams(window.location.search);
@@ -575,6 +590,7 @@ function reader() {
             this.$watch('fitMode', val => localStorage.setItem('reader_fitMode', val));
             this.$watch('doublePageOffset', val => localStorage.setItem('reader_doublePageOffset', val));
             this.$watch('showSpineShadow', val => localStorage.setItem('reader_showSpineShadow', val));
+            this.$watch('uiLocked', val => localStorage.setItem('reader_uiLocked', val));
         },
 
         async loadInitData() {
@@ -749,7 +765,10 @@ function reader() {
         prevPage() {
 
             if (this.viewMode === 'single') {
-                if (this.currentPage > 0) this.currentPage--;
+                if (this.currentPage > 0) {
+                    this.currentPage--;
+                    this.updateProgress();
+                }
                 return;
             }
 
@@ -871,7 +890,10 @@ function reader() {
         },
 
         toggleFullscreen() {
-            if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                void setTimeout(() => { window.showToast('Fullscreen mode on', 'info')}, 500);
+            }
             else document.exitFullscreen();
         },
 
@@ -1087,6 +1109,64 @@ function reader() {
         toggleMangaMode() {
             this.readDirection = this.readDirection === 'ltr' ? 'rtl' : 'ltr';
             window.comicServer.showToast(this.readDirection === 'rtl' ? "Manga Mode (RTL)" : "Western Mode (LTR)");
+        },
+
+        // --- Touch handling --
+
+        // TOUCH START
+        handleTouchStart(e) {
+            // Store the start coordinates and time
+            this.touchStartX = e.changedTouches[0].screenX;
+            this.touchStartY = e.changedTouches[0].screenY;
+            this.startTime = new Date().getTime();
+        },
+
+        // TOUCH END
+        handleTouchEnd(e) {
+            const touchEndX = e.changedTouches[0].screenX;
+            const touchEndY = e.changedTouches[0].screenY;
+            const elapsedTime = new Date().getTime() - this.startTime;
+
+            // Ignore slow drags or taps
+            if (elapsedTime > this.maxSwipeTime) return;
+
+            const diffX = touchEndX - this.touchStartX;
+            const diffY = touchEndY - this.touchStartY;
+
+            // Check horizontal swipe vs vertical scroll
+            // We only trigger if horizontal movement is significantly larger than vertical
+            if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > this.minSwipeDistance) {
+
+                // SWIPE DETECTED
+                if (diffX > 0) {
+                    // Swiped RIGHT (Finger moved ->)
+                    this.onSwipeRight();
+                } else {
+                    // Swiped LEFT (Finger moved <-)
+                    this.onSwipeLeft();
+                }
+            }
+        },
+
+        // DIRECTION HANDLERS
+        onSwipeRight() {
+            // LTR: Swipe Right goes BACK (Reveal left page)
+            // RTL: Swipe Right goes NEXT (Reveal right page)
+            if (this.readDirection === 'rtl') {
+                this.nextPage();
+            } else {
+                this.prevPage();
+            }
+        },
+
+        onSwipeLeft() {
+            // LTR: Swipe Left goes NEXT (Reveal right page)
+            // RTL: Swipe Left goes BACK (Reveal left page)
+            if (this.readDirection === 'rtl') {
+                this.prevPage();
+            } else {
+                this.nextPage();
+            }
         },
 
     }

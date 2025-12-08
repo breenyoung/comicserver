@@ -26,7 +26,7 @@ class SearchRequest(BaseModel):
     match: Literal['any', 'all'] = 'all'
     filters: List[SearchFilter] = Field(default_factory=list)
 
-    sort_by: Literal['created', 'updated', 'year', 'series', 'title', 'page_count'] = 'created'
+    sort_by: Literal['created', 'updated', 'year', 'series', 'title', 'page_count', 'rating'] = 'created'
     sort_order: Literal['asc', 'desc'] = 'desc'
 
     limit: int = Field(default=50, ge=1, le=1000)
@@ -47,6 +47,7 @@ class ComicSearchItem(BaseModel):
     publisher: Optional[str] = None
     format: Optional[str] = None
     thumbnail_path: Optional[str] = None
+    community_rating: Optional[float] = None
 
 
 class SearchResponse(BaseModel):

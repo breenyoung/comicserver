@@ -141,6 +141,9 @@
         </div>
 
     {% include "partials/add_pull_list_modal.html" %}
+    {% include "partials/selection_widget.html" %}
+
+
 
 
     <script src="{{ url('/static/js/app.js') }}"></script>
@@ -182,6 +185,7 @@
         })
     </script>
 
+    {% include "partials/event_listeners.html" %}
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

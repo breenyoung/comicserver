@@ -1,0 +1,42 @@
+<div x-data="{
+    collectionModalOpen: false,
+
+    init() {
+        // 1. Listen for 'Mark Read / Unread event'
+        window.addEventListener('batch-set-read', (e) => {
+            // e.detail.read contains true/false
+            this.setBatchReadStatus(e.detail.read);
+        });
+
+        // 2. Listen for 'Add to Collection'
+        window.addEventListener('open-batch-collection', () => {
+            this.collectionModalOpen = true;
+            // You might dispatch another event here to tell the modal inside to fetch data
+            this.$dispatch('fetch-collections-list');
+        });
+    },
+
+    async setBatchReadStatus(isRead) {
+        const action = isRead ? 'Read' : 'Unread';
+        if(!confirm(`Mark ${$store.batch.count} items as ${action}?`)) return;
+
+        try {
+            // Prepare payload with the boolean flag
+            const payload = { ...$store.batch.payload, read: isRead };
+
+            const res = await fetch('/api/batch/read-status', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+
+            if(res.ok) {
+                window.comicServer.showToast(`Batch marked as ${action}!`);
+                $store.batch.clear();
+                // window.location.reload(); // Recommended to reflect 'Unread' state immediately
+            }
+        } catch(e) { console.error(e); }
+    }
+
+}">
+</div>

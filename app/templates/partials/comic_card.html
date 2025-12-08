@@ -1,40 +1,65 @@
-<div class="relative" x-data="{
+<div class="relative select-none"
+     x-data="{
         get readerQueryParams() {
             if(typeof readingList !== 'undefined') { return `context_type=reading_list&context_id=${this.readingListId}`; }
             else if(typeof collection !== 'undefined') { return `context_type=collection&context_id=${this.collection.id}`; }
             else { return ''; }
-        }
-
-}">
+        },
+        get isSelected() { return $store.batch && $store.batch.has(comic.id, 'comic'); }
+     }">
 
     <a :href="`/reader/${comic.id}?${readerQueryParams}`" class="block group relative cursor-pointer">
-        <div class="aspect-[2/3] bg-gray-700 rounded-lg overflow-hidden relative shadow-md transition-transform duration-200 group-hover:scale-[1.02]">
+
+        <div class="aspect-[2/3] bg-gray-700 rounded-lg overflow-hidden relative shadow-md transition-all duration-200 group-hover:scale-[1.02]"
+             :class="isSelected ? 'ring-4 ring-blue-500/80 scale-[0.98]' : ''">
+
+            <div class="absolute top-2 left-2 z-40 cursor-pointer transition-opacity duration-200"
+                 :class="($store.batch.active || isSelected) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
+                 @click.prevent.stop="$store.batch.toggle(comic.id, 'comic', comic.read)">
+
+                <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center shadow-lg transition-all duration-200 bg-black/40 backdrop-blur-sm"
+                     :class="isSelected ? 'bg-blue-600 border-blue-600 scale-110' : 'border-white/70 hover:bg-black/60'">
+
+                     <svg x-show="isSelected" class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+                     </svg>
+                </div>
+            </div>
 
             <img
                 :src="comic.thumbnail_path"
                 :alt="comic.title"
-                class="w-full h-full object-cover transition-opacity duration-300"
+                class="w-full h-full object-cover transition-all duration-300"
+                :class="isSelected ? 'opacity-60 grayscale-[30%]' : 'opacity-100'"
                 loading="lazy"
             >
 
             <template x-if="comic.format && comic.format !== 'Comic'">
                 <div
-                    class="absolute top-2 left-2 text-white text-[10px] uppercase font-bold px-2 py-1 rounded shadow-md z-10 transition-opacity duration-300 group-hover:opacity-0"
+                    class="absolute bottom-2 left-2 text-white text-[10px] uppercase font-bold px-2 py-1 rounded shadow-md z-10 transition-opacity duration-300 pointer-events-none"
                     :class="comic.format.toLowerCase() === 'annual' ? 'bg-yellow-600' : 'bg-purple-600'"
                     x-text="comic.format"
                 ></div>
             </template>
 
             <template x-if="comic.read">
-                 <div class="absolute top-2 right-2 z-10 bg-green-500 text-white rounded-full p-0.5 shadow-md border border-green-400">
+                 <div class="absolute top-2 right-2 z-10 bg-green-500 text-white rounded-full p-0.5 shadow-md border border-green-400 pointer-events-none">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                       <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
                     </svg>
                 </div>
             </template>
 
-            <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-60 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                <span class="text-white font-bold bg-blue-600 px-4 py-2 rounded-full transform scale-90 group-hover:scale-100 transition-all shadow-lg">
+            <template x-if="comic.community_rating && comic.community_rating > 0">
+                <div class="absolute bottom-2 right-2 z-10 bg-black/70 text-yellow-400 text-[10px] font-bold px-1.5 py-0.5 rounded backdrop-blur-sm border border-white/10 flex items-center gap-0.5">
+                    <span>★</span>
+                    <span x-text="Number(comic.community_rating).toFixed(1)"></span>
+                </div>
+            </template>
+
+            <div x-show="!isSelected && !$store.batch.active"
+                 class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-60 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
+                <span class="text-white font-bold bg-blue-600 px-4 py-2 rounded-full transform scale-90 group-hover:scale-100 transition-all shadow-lg pointer-events-auto">
                     Read
                 </span>
             </div>
@@ -50,5 +75,4 @@
             <p class="text-sm text-gray-400 truncate group-hover/text:text-gray-300 transition-colors" x-text="comic.title || `Issue ${comic.number}`"></p>
         </a>
     </div>
-
 </div>

@@ -77,7 +77,58 @@ document.addEventListener('alpine:init', () => {
         }
     }));
 
-    // ... (Your scannerStatus component should also be here ideally) ...
+    Alpine.store('batch', {
+
+        items: new Set(), // Stores "comic:1", "series:2", etc.
+        readCount: 0, // Tracks how many selected items are already read
+
+        // Helpers
+        get count() { return this.items.size; },
+        get active() { return this.items.size > 0; },
+
+        // Smart Getter: Are ALL selected items currently read?
+        get allRead() { return this.count > 0 && this.readCount === this.count; },
+
+        // Helper: Check if specific item is selected
+        has(id, type = 'comic') {
+            return this.items.has(`${type}:${id}`);
+        },
+
+        // Helper: Toggle selection
+        toggle(id, type = 'comic', isRead = false) {
+            const key = `${type}:${id}`;
+            if (this.items.has(key)) {
+                this.items.delete(key);
+                if (isRead) this.readCount--; // Decrement if removing a read item
+            }
+            else {
+                this.items.add(key);
+                if (isRead) this.readCount++; // Increment if adding a read item
+            }
+        },
+
+        // Helper: Sorts selection into API-ready arrays
+        get payload() {
+
+            const result = { comic_ids: [], series_ids: [], volume_ids: [] };
+
+            this.items.forEach(key => {
+                const [type, id] = key.split(':');
+                const numericId = parseInt(id);
+
+                if (type === 'comic') result.comic_ids.push(numericId);
+                else if (type === 'series') result.series_ids.push(numericId);
+                else if (type === 'volume') result.volume_ids.push(numericId);
+                // Possible future type handling
+            });
+            return result;
+        },
+
+        clear() { this.items.clear(); this.readCount = 0; }
+    });
+
+
+    // ... (ScannerStatus component should also be here ideally) ...
 });
 
 

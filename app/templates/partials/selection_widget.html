@@ -1,0 +1,33 @@
+<div x-data
+     x-show="$store.batch.active"
+     x-transition:enter="transition ease-out duration-300"
+     x-transition:enter-start="transform translate-y-full opacity-0"
+     x-transition:enter-end="transform translate-y-0 opacity-100"
+     x-transition:leave="transition ease-in duration-200"
+     x-transition:leave-start="transform translate-y-0 opacity-100"
+     x-transition:leave-end="transform translate-y-full opacity-0"
+     class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 border border-gray-700 shadow-2xl rounded-full px-6 py-3 flex items-center gap-4 text-sm"
+     style="display: none;">
+
+    <div class="font-bold text-white flex items-center gap-2">
+        <span class="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs" x-text="$store.batch.count"></span>
+        <span class="hidden sm:inline">Selected</span>
+    </div>
+
+    <div class="h-6 w-px bg-gray-700 mx-2"></div>
+
+    <button x-on:click="$dispatch('open-batch-collection')" class="text-gray-300 hover:text-white flex items-center gap-1">
+        <span>📚 Collection</span>
+    </button>
+
+    <button x-on:click="$dispatch('batch-set-read', { read: !$store.batch.allRead })" class="text-gray-300 hover:text-white flex items-center gap-1">
+        <span x-text="$store.batch.allRead ? '○' : '✓'"></span>
+        <span x-text="$store.batch.allRead ? 'Mark Unread' : 'Mark Read'"></span>
+    </button>
+
+    <div class="h-6 w-px bg-gray-700 mx-2"></div>
+
+    <button x-on:click="$store.batch.clear()" class="text-red-400 hover:text-red-300 font-bold">
+        ✕
+    </button>
+</div>

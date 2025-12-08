@@ -14,6 +14,10 @@
         background: #000;
         display: flex; flex-direction: column;
         z-index: 100;
+        /* On some mobile browsers (like Chrome Android or Safari iOS),
+        swiping from the very edge of the screen triggers "Back" in the browser history.
+         */
+        touch-action: pan-y; /* Allows vertical scroll but captures horizontal swipes */
     }
 
     /* Toolbar */
@@ -39,7 +43,6 @@
         max-width: 100%; max-height: 100%;
         object-fit: contain;
         user-select: none;
-        transition: transform 0.1s; /* Smooth zoom if added later */
     }
 
     /* Invisible Nav Zones */
@@ -51,6 +54,9 @@
     .nav-zone.right { right: 0; }
     .nav-zone:hover { background: linear-gradient(to right, rgba(255,255,255,0.05), transparent); }
     .nav-zone.right:hover { background: linear-gradient(to left, rgba(255,255,255,0.05), transparent); }
+    .nav-zone.center { left: 20%; width: 60%;
+        cursor: default; /* Pointer not needed for the "reading" area */
+    }
 
     /* Bottom Controls */
     .reader-controls {
@@ -165,9 +171,12 @@
 
 {% block content %}
 
-<div class="reader-container" x-data="reader()" tabindex="0" x-on:keydown.window="handleKey($event)">
+<div class="reader-container" x-data="reader()" tabindex="0"
+     x-on:keydown.window="handleKey($event)"
+     x-on:touchstart="handleTouchStart($event)"
+     x-on:touchend="handleTouchEnd($event)">
 
-    <div class="reader-toolbar">
+    <div class="reader-toolbar" :class="{'hidden': !shouldShowUI}">
 
         <!-- Left side close button + Comic information -->
         <div class="flex items-center space-x-4 max-w-[50%]">
@@ -180,7 +189,7 @@
 
                 <div class="flex items-center gap-2 text-xs truncate">
 
-                    <span class="text-xs text-gray-400 truncate" x-text="meta.title"></span>
+                    <span class="text-xs text-gray-400 truncate" x-text="meta.title" x-bind:title="meta.title"></span>
                     <template x-if="meta.context_total > 1">
                         <span class="text-blue-400 font-medium bg-blue-900/30 px-1.5 rounded border border-blue-500/30"
                               x-text="`${getContextLabel(meta.context_type)} / ${meta.context_label}: ${meta.context_position}/${meta.context_total}`">
@@ -194,6 +203,8 @@
 
         <!-- Right side icons -->
         <div class="flex items-center space-x-2">
+
+            <span class="text-gray-400 text-xs font-mono font-bold mr-3 hidden md:block" x-text="currentTime"></span>
 
             <button x-on:click="toggleUiLock()" class="p-2 rounded hover:bg-white/10 transition-colors"
                     :class="uiLocked ? 'text-blue-400' : 'text-gray-300'"
@@ -245,6 +256,27 @@
                 </button>
             </div>
 
+           <div class="flex items-center justify-between pl-4 border-l-2 border-gray-700 transition-all"
+                 x-show="viewMode === 'double'"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 -translate-y-2"
+                 x-transition:enter-end="opacity-100 translate-y-0">
+
+                <label class="text-sm text-gray-300">Book Shadow</label>
+                <input type="checkbox" x-model="showSpineShadow" class="rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-0">
+            </div>
+
+            <div class="flex items-center justify-between pl-4 border-l-2 border-gray-700 transition-all"
+                 x-show="viewMode === 'double'"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 -translate-y-2"
+                 x-transition:enter-end="opacity-100 translate-y-0">
+
+                <label class="text-sm text-gray-400">Cover Offset</label>
+                <input type="checkbox" x-model="doublePageOffset" class="rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-0">
+            </div>
+
+
             <div class="flex items-center justify-between">
                 <label class="text-sm">Manga Mode (m)</label>
                 <button
@@ -255,11 +287,6 @@
                     <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
                           :class="readDirection === 'rtl' ? 'translate-x-5' : 'translate-x-0'"></span>
                 </button>
-            </div>
-
-            <div x-show="viewMode === 'double'" class="flex items-center justify-between">
-                <label class="text-sm text-gray-400">Cover Offset</label>
-                <input type="checkbox" x-model="doublePageOffset" class="rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-0">
             </div>
 
         </div>
@@ -315,34 +342,55 @@
     <div class="reader-content">
 
         <div class="nav-zone left" x-on:click="handleZoneClick('left')"></div>
+        <div class="nav-zone center" x-on:click="handleZoneClick('center')"></div>
         <div class="nav-zone right" x-on:click="handleZoneClick('right')"></div>
 
-        <div class="flex items-center justify-center h-full w-full transition-all duration-300"
+        <div class="flex items-center justify-center h-full w-full"
                      :class="{
                         'flex-row': readDirection === 'ltr',
                         'flex-row-reverse': readDirection === 'rtl',
                         'gap-0': true
                      }">
 
-            <template x-if="pagesToDisplay[0]">
-                <img
-                    :src="getPageUrl(pagesToDisplay[0].index)"
-                    :class="imageClasses"
-                    :style="imageStyles"
-                    class="reader-page object-contain transition-transform duration-100"
-                    alt="Page"
-                >
+
+            <template x-for="(page, idx) in pagesToDisplay" :key="page.index">
+                    <img
+                        :src="getPageUrl(page.index)"
+                        :class="imageClasses"
+                        class="reader-page"
+                        :class="{
+                            /* LEFT SIDE OF SCREEN: Align to Right (Spine) */
+                            'object-right': viewMode === 'double' && pagesToDisplay.length > 1 && (
+                                (readDirection === 'ltr' && idx === 0) ||
+                                (readDirection === 'rtl' && idx === 1)
+                            ),
+
+                            /* RIGHT SIDE OF SCREEN: Align to Left (Spine) */
+                            'object-left': viewMode === 'double' && pagesToDisplay.length > 1 && (
+                                (readDirection === 'ltr' && idx === 1) ||
+                                (readDirection === 'rtl' && idx === 0)
+                            )
+                        }"
+                        :style="imageStyles"
+                        alt="Page"
+                    >
             </template>
 
-            <template x-if="pagesToDisplay[1]">
-                <img
-                    :src="getPageUrl(pagesToDisplay[1].index)"
-                    :class="imageClasses"
-                    :style="imageStyles"
-                    class="reader-page object-contain transition-transform duration-100"
-                    alt="Page Next"
-                >
-            </template>
+
+            {# Comic spine emulation #}
+            <div class="absolute inset-y-0 left-1/2 w-24 -translate-x-1/2 pointer-events-none z-20"
+                 x-show="viewMode === 'double' && pagesToDisplay.length === 2 && showSpineShadow"
+                 x-transition:enter="transition-opacity duration-200"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 style="background: linear-gradient(90deg,
+                        transparent 0%,
+                        rgba(0,0,0,0.05) 30%,
+                        rgba(0,0,0,0.4) 50%,
+                        rgba(0,0,0,0.05) 70%,
+                        transparent 100%);">
+            </div>
+
 
         </div>
 
@@ -398,7 +446,7 @@
 
             <div class="w-px h-6 bg-gray-700 mx-2"></div>
 
-             <select x-model="fitMode" class="bg-transparent text-xs text-gray-300 focus:outline-none cursor-pointer" x-on:change="$el.blur()">
+             <select x-model="fitMode" class="bg-transparent text-xs text-gray-400 focus:outline-none cursor-pointer" x-on:change="$el.blur()">
                 <option value="contain">Fit Screen</option>
                 <option value="width">Fit Width</option>
                 <option value="height">Fit Height</option>
@@ -451,25 +499,46 @@
 <script>
 function reader() {
     return {
+
+        currentTime: '',
+
+        // --- Core State ---
         comicId: {{ comic_id }},
         currentPage: 0,
         meta: { page_count: 0, next_comic_id: null, prev_comic_id: null },
+
+        // SWIPE STATE
+        touchStartX: 0,
+        touchStartY: 0,
+        minSwipeDistance: 50, // Minimum pixels to count as a swipe
+        maxSwipeTime: 500,    // Maximum ms to count as a swipe (prevents slow drags)
+        startTime: 0,
+
+        // --- Settings ---
         showSettings: false,
         fitMode: 'contain',
         viewMode: 'single', // 'single', 'double'
         readDirection: 'ltr', // 'ltr' (Western), 'rtl' (Manga)
         doublePageOffset: true, // If true, Page 0 is separate (Cover mode)
+        showSpineShadow: false, // For use in double page mode
+
+        // --- UI State ---
         showGoto: false,
         gotoInputValue: 1,
         scrubberValue: 0,
         isScrubbing: false,  // True while dragging
         isHoveringScrubber: false,
+        tapVisible: false,
         uiLocked: false,  // If true, UI is always on
         isHoveringZone: false,  // If true, mouse is at the bottom
         isHoveringBar: false,  // The actual button bar
         isIncognito: false,
         contextType: null,
         contextId: null,
+
+        // --- Image Cache & Metadata ---
+        // Stores data about pages we've sniffed (e.g., { 0: { isLandscape: false, loaded: true } })
+        pageMeta: {},
 
         // Filter State
         filters: {
@@ -482,9 +551,19 @@ function reader() {
 
         init() {
 
+            // Initialize Clock
+            this.updateClock();
+
+            // Start Timer (Update every minute is usually enough, but seconds works too)
+            setInterval(() => { this.updateClock(); }, 1000);
+
             // Load settings from local storage
             this.viewMode = localStorage.getItem('reader_viewMode') || 'single';
             this.readDirection = localStorage.getItem('reader_readDirection') || 'ltr';
+            this.fitMode = localStorage.getItem('reader_fitMode') || 'contain';
+            this.doublePageOffset = JSON.parse(localStorage.getItem('reader_doublePageOffset') ?? 'true');
+            this.showSpineShadow = JSON.parse(localStorage.getItem('reader_showSpineShadow') ?? 'true');
+            this.uiLocked = JSON.parse(localStorage.getItem('reader_uiLocked') ?? 'false');
 
             // Check for incognito flag immediately
             const params = new URLSearchParams(window.location.search);
@@ -503,17 +582,31 @@ function reader() {
                 if (!this.isScrubbing) {
                     this.scrubberValue = val;
                 }
+
+                // TRIGGER PRELOAD
+                this.preloadContext();
             });
 
-            // Restore filters from localStorage
+            // Restore filters from localStorage (MERGE strategy)
             const savedFilters = localStorage.getItem('readerFilters');
-            if(savedFilters) this.filters = JSON.parse(savedFilters);
+            if(savedFilters) {
+               const parsed = JSON.parse(savedFilters);
+                // Spread the parsed values ON TOP of the current defaults.
+                // This ensures 'transcode' (and future keys) survive if missing from storage.
+                this.filters = { ...this.filters, ...parsed };
+            }
+
+            // Force a save immediately to "heal" the local storage with the new key
+            localStorage.setItem('readerFilters', JSON.stringify(this.filters));
 
             // Persist filters on change
             this.$watch('filters', val => localStorage.setItem('readerFilters', JSON.stringify(val)));
             this.$watch('viewMode', val => localStorage.setItem('reader_viewMode', val));
             this.$watch('readDirection', val => localStorage.setItem('reader_readDirection', val));
-
+            this.$watch('fitMode', val => localStorage.setItem('reader_fitMode', val));
+            this.$watch('doublePageOffset', val => localStorage.setItem('reader_doublePageOffset', val));
+            this.$watch('showSpineShadow', val => localStorage.setItem('reader_showSpineShadow', val));
+            this.$watch('uiLocked', val => localStorage.setItem('reader_uiLocked', val));
         },
 
         async loadInitData() {
@@ -524,46 +617,69 @@ function reader() {
                 if(this.contextId) params.append('context_id', this.contextId);
 
                 // Fetch new Init endpoint from comics API
-                const res = await fetch(`/api/reader/${this.comicId}/read-init?${params.toString()}`);
+                const res = await fetch(window.url(`/api/reader/${this.comicId}/read-init?${params.toString()}`));
 
-                if (!res.ok) throw new Error("Failed to init reader");
+                if (!res.ok) {
+                    window.showToast('Failed to init reader', 'error')
+                    throw new Error('Failed to init reader');
+                }
                 this.meta = await res.json();
 
                 // If Incognito, DO NOT load previous progress. Start fresh.
-                if (this.isIncognito) { return; }
+                if (!this.isIncognito) {
+                    // Check for saved progress
+                    const progRes = await fetch(window.url(`/api/progress/${this.comicId}`));
+                    const prog = await progRes.json();
 
-                // Check for saved progress
-                const progRes = await fetch(`/api/progress/${this.comicId}`);
-                const prog = await progRes.json();
-
-                if (prog.has_progress && !prog.completed) {
-                    this.currentPage = prog.current_page;
+                    if (prog.has_progress && !prog.completed) {
+                        this.currentPage = prog.current_page;
+                    }
                 }
+
+                // Initial Preload Kickoff
+                this.preloadContext();
+
             } catch (e) { console.error(e); }
         },
 
-        get currentPageUrl() {
-            if (this.meta.page_count === 0) return '';
+        // ------------------------------
+        // --- Preloading Engine ---
+        // ------------------------------
+        preloadContext() {
+            // Determine how far to look ahead
+            const lookahead = this.viewMode === 'double' ? 4 : 2;
 
-            // Points to reader.py endpoint
-            let url = `/api/reader/${this.comicId}/page/${this.currentPage}`;
-
-            // Append Server-Side Filters
-            const params = new URLSearchParams();
-            if (this.filters.transcode) params.append('webp', 'true');
-            if (this.filters.sharpen) params.append('sharpen', 'true');
-            if (this.filters.grayscale) params.append('grayscale', 'true');
-
-            // CACHE BUSTER: Add a timestamp based on the filter state
-            // This ensures a unique URL when settings change, forcing a re-fetch
-            // We use the values of the filters to create a semi-stable key,
-            // or just Date.now() if you want to force it every time (easiest for debugging).
-            params.append('_t', Date.now());
-
-            const queryString = params.toString();
-
-            return queryString ? `${url}?${queryString}` : url;
+            for (let i = 1; i <= lookahead; i++) {
+                const targetPage = this.currentPage + i;
+                if (targetPage < this.meta.page_count) {
+                    this.preloadImage(targetPage);
+                }
+            }
         },
+
+        preloadImage(index) {
+
+            // Avoid re-fetching if we already know about this page
+            if (this.pageMeta[index] && this.pageMeta[index].loaded) return;
+
+            const img = new Image();
+            img.src = this.getPageUrl(index);
+
+            img.onload = () => {
+                // SNIFF DIMENSIONS for "Smart Spreads"
+                const isLandscape = img.width > img.height;
+
+                // Reactive update to pageMeta
+                this.pageMeta[index] = {
+                    loaded: true,
+                    isLandscape: isLandscape,
+                    width: img.width,
+                    height: img.height
+                };
+            };
+        },
+        // ------------------------------
+
 
         // Helper to construct URL
         getPageUrl(index) {
@@ -578,20 +694,48 @@ function reader() {
             if (this.filters.sharpen) params.append('sharpen', 'true');
             if (this.filters.grayscale) params.append('grayscale', 'true');
 
-            // CACHE BUSTER: Add a timestamp based on the filter state
-            // This ensures a unique URL when settings change, forcing a re-fetch
-            // We use the values of the filters to create a semi-stable key,
-            // or just Date.now() if you want to force it every time (easiest for debugging).
-            params.append('_t', Date.now()); // Cache bust
+            // CACHE BUSTER: Add a key based on the filter state
+            // Create a stable cache key based on filter state
+            // We only want to bust cache if FILTERS change, not time.
+            const filterKey = `${this.filters.transcode}-${this.filters.sharpen}-${this.filters.grayscale}-${this.filters.brightness}-${this.filters.contrast}`;
+            params.append('v', filterKey);
+
             const queryString = params.toString();
             return queryString ? `${url}?${queryString}` : url;
         },
 
+
         // Helper for CSS classes
         get imageClasses() {
-            // In double mode, each image takes up max 50% width
-            return this.viewMode === 'double' ? 'max-w-[50vw] max-h-screen' : 'max-w-full max-h-screen';
+            // 1. Check if we are in "Smart Spread" mode
+            // (Double View selected, but only 1 page is being returned)
+            const isSmartSpread = this.viewMode === 'double' && this.pagesToDisplay.length === 1;
+
+            if (this.viewMode === 'double' && !isSmartSpread) {
+                // Standard Double Page: Two images side-by-side.
+                // Cap them at 50vw so they fit.
+                // REMOVED mx-auto: This fixes the gap.
+                // Use 'w-1/2' (50% width) instead of 'max-w-[50vw]'.
+                // This reserves the screen space instantly, preventing the "fill" animation.
+                // Also add 'h-screen' to ensure the vertical bounding box is stable.
+                return 'w-1/2 h-screen object-contain';
+            } else {
+                // Single View OR Smart Spread (Wide image acting as single)
+                return 'w-full h-screen object-contain';
+            }
         },
+
+        // Defines strictly if a page MUST stand alone
+        isPageSolo(index) {
+            // A. Cover Offset Rule (Page 0 is always solo if enabled)
+            if (this.doublePageOffset && index === 0) return true;
+
+            // B. Smart Landscape Rule (Wide images are always solo)
+            if (this.pageMeta[index] && this.pageMeta[index].isLandscape) return true;
+
+            return false;
+        },
+
 
         get imageStyles() {
             // Combine Fit Mode and CSS Filters
@@ -622,24 +766,12 @@ function reader() {
         },
 
         nextPage() {
-            let increment = 1;
+            // Calculate how many pages we are CURRENTLY showing.
+            // If showing [1], move 1. If showing [1,2], move 2.
+            const step = this.pagesToDisplay.length;
 
-            // In Double Mode, we usually jump 2 pages
-            if (this.viewMode === 'double') {
-                // If currently on Cover (Page 0) with Offset, we only jump 1 to get to [1,2]
-                if (this.doublePageOffset && this.currentPage === 0) {
-                    increment = 1;
-                } else {
-                    increment = 2;
-                }
-            }
-
-            if (this.currentPage + increment < this.meta.page_count) {
-                this.currentPage += increment;
-                this.updateProgress();
-            } else if (this.currentPage < this.meta.page_count - 1) {
-                // Edge case: We are at [Last-1], jump 1 to [Last]
-                this.currentPage++;
+            if (this.currentPage + step < this.meta.page_count) {
+                this.currentPage += step;
                 this.updateProgress();
             } else if (this.meta.next_comic_id) {
                 window.comicServer.showToast("End of Book. Press ] for next issue.");
@@ -648,24 +780,58 @@ function reader() {
 
         prevPage() {
 
-            let decrement = 1;
-
-            if (this.viewMode === 'double') {
-                // If we are at Page 1 (start of spread [1,2]), jumping back 1 goes to Cover [0]
-                if (this.doublePageOffset && this.currentPage === 1) {
-                    decrement = 1;
-                } else {
-                    decrement = 2;
+            if (this.viewMode === 'single') {
+                if (this.currentPage > 0) {
+                    this.currentPage--;
+                    this.updateProgress();
                 }
+                return;
             }
 
-            if (this.currentPage - decrement >= 0) {
-                this.currentPage -= decrement;
+            // Double Mode Look-Back
+            // We need to determine if the PREVIOUS view was a pair or a solo.
+
+            // Target candidate: The page immediately before current
+            const prev1 = this.currentPage - 1;
+            if (prev1 < 0) return; // Already at start
+
+            // Scenario A: The previous page is a Solo (Spread or Cover)
+            // View was [prev1] -> Step back 1
+            if (this.isPageSolo(prev1)) {
+                this.currentPage -= 1;
                 this.updateProgress();
-            } else if (this.currentPage > 0) {
+                return;
+            }
+
+            // Scenario B: The page BEFORE that (prev2) was a Solo.
+            // This implies prev1 was an "orphan" single page.
+            // View was [prev1] -> Step back 1
+            const prev2 = this.currentPage - 2;
+            if (prev2 >= 0 && this.isPageSolo(prev2)) {
+                this.currentPage -= 1;
+                this.updateProgress();
+                return;
+            }
+
+            // Scenario C: Start of book edge case
+            // If we are at Page 1 (No offset), prev1=0.
+            // If 0 is NOT solo, it pairs with 1? No, we are at 1.
+            // This means 0 was unpaired or we wouldn't be at 1.
+            // Actually, if we are at 1, and 0 is NOT solo, we should probably jump to 0.
+            // But usually standard pairs are 0-1, 2-3. You can't be at 1 unless 0 was solo.
+            // So this case might be unreachable in ideal flow, but safe to handle.
+            if (prev2 < 0) {
+                // We are at 1. Jump to 0.
                 this.currentPage = 0;
                 this.updateProgress();
+                return;
             }
+
+            // Scenario D: Standard Pair
+            // Neither prev1 nor prev2 forced a break.
+            // View was [prev2, prev1] -> Step back 2
+            this.currentPage -= 2;
+            this.updateProgress();
         },
 
         goToBook(id) {
@@ -740,7 +906,10 @@ function reader() {
         },
 
         toggleFullscreen() {
-            if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                void setTimeout(() => { window.showToast('Fullscreen mode on', 'info')}, 500);
+            }
             else document.exitFullscreen();
         },
 
@@ -883,8 +1052,9 @@ function reader() {
         // Computed property for visibility
         get shouldShowUI() {
 
-            return this.uiLocked
-                || this.isHoveringZone
+            return this.uiLocked        // Persistent Pin
+                || this.tapVisible      // Transient Tap
+                || this.isHoveringZone  // Mouse Hover
                 || this.showSettings
                 || this.showGoto
                 || this.isScrubbing
@@ -914,31 +1084,49 @@ function reader() {
                 return [{ index: this.currentPage }];
             }
 
-            // 2. Double Mode
-            // Logic: Is the current page the "Cover" (Page 0) and do we want an offset?
-            // If Offset is ON, Page 0 is always single.
-            if (this.doublePageOffset && this.currentPage === 0) {
-                return [{ index: 0 }];
+            // Standard Double Mode Logic
+            const p1 = this.currentPage;
+            const p2 = this.currentPage + 1;
+
+            // Rule 1: Is P1 a solo page? (Cover or Spread)
+            if (this.isPageSolo(p1)) {
+                return [{ index: p1 }];
             }
 
-            // Calculate the "Base" page (Must be Odd if offset is on, Even if not)
-            // Example with Offset (Standard Comic): [0], [1,2], [3,4]
-            // Example without Offset: [0,1], [2,3]
-
-            // Determine pair start
-            let p1 = this.currentPage;
-            let p2 = this.currentPage + 1;
-
-            // Boundary check
+            // Rule 2: End of book check
             if (p2 >= this.meta.page_count) {
-                return [{ index: p1 }]; // Last page is single
+                return [{ index: p1 }];
             }
 
+            // Rule 3: Is P2 a solo page? (The "Smart Spread" check)
+            // CRITICAL FIX: If P2 is a spread, P1 cannot pair with it. P1 must be alone.
+            if (this.isPageSolo(p2)) {
+                return [{ index: p1 }];
+            }
+
+            // Rule 4: Standard Pair
             return [{ index: p1 }, { index: p2 }];
         },
 
 
         handleZoneClick(zone) {
+
+            // Center Tap: Toggle UI Visibility
+            if (zone === 'center') {
+
+                // If the UI is already pinned (Locked), tapping center does nothing
+                // (or you could make it unpin, but standard behavior is "Pin overrides all")
+                if (this.uiLocked) {
+                     window.comicServer.showToast("UI is Pinned. Use Eye icon to unlock.");
+                     return;
+                }
+
+                // Standard Toggle
+                this.tapVisible = !this.tapVisible;
+                return;
+            }
+
+            // Directional Taps (Left/Right)
             // Context Aware Clicking
             // If LTR: Left = Prev, Right = Next
             // If RTL: Left = Next, Right = Prev
@@ -955,6 +1143,68 @@ function reader() {
         toggleMangaMode() {
             this.readDirection = this.readDirection === 'ltr' ? 'rtl' : 'ltr';
             window.comicServer.showToast(this.readDirection === 'rtl' ? "Manga Mode (RTL)" : "Western Mode (LTR)");
+        },
+
+        // --- Touch handling --
+
+        // TOUCH START
+        handleTouchStart(e) {
+            // Store the start coordinates and time
+            this.touchStartX = e.changedTouches[0].screenX;
+            this.touchStartY = e.changedTouches[0].screenY;
+            this.startTime = new Date().getTime();
+        },
+
+        // TOUCH END
+        handleTouchEnd(e) {
+            const touchEndX = e.changedTouches[0].screenX;
+            const touchEndY = e.changedTouches[0].screenY;
+            const elapsedTime = new Date().getTime() - this.startTime;
+
+            // Ignore slow drags or taps
+            if (elapsedTime > this.maxSwipeTime) return;
+
+            const diffX = touchEndX - this.touchStartX;
+            const diffY = touchEndY - this.touchStartY;
+
+            // Check horizontal swipe vs vertical scroll
+            // We only trigger if horizontal movement is significantly larger than vertical
+            if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > this.minSwipeDistance) {
+
+                // SWIPE DETECTED
+                if (diffX > 0) {
+                    // Swiped RIGHT (Finger moved ->)
+                    this.onSwipeRight();
+                } else {
+                    // Swiped LEFT (Finger moved <-)
+                    this.onSwipeLeft();
+                }
+            }
+        },
+
+        // DIRECTION HANDLERS
+        onSwipeRight() {
+            // LTR: Swipe Right goes BACK (Reveal left page)
+            // RTL: Swipe Right goes NEXT (Reveal right page)
+            if (this.readDirection === 'rtl') {
+                this.nextPage();
+            } else {
+                this.prevPage();
+            }
+        },
+
+        onSwipeLeft() {
+            // LTR: Swipe Left goes NEXT (Reveal right page)
+            // RTL: Swipe Left goes BACK (Reveal left page)
+            if (this.readDirection === 'rtl') {
+                this.prevPage();
+            } else {
+                this.nextPage();
+            }
+        },
+
+        updateClock() {
+            this.currentTime = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         },
 
     }

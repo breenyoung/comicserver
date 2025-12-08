@@ -54,6 +54,9 @@
     .nav-zone.right { right: 0; }
     .nav-zone:hover { background: linear-gradient(to right, rgba(255,255,255,0.05), transparent); }
     .nav-zone.right:hover { background: linear-gradient(to left, rgba(255,255,255,0.05), transparent); }
+    .nav-zone.center { left: 20%; width: 60%;
+        cursor: default; /* Pointer not needed for the "reading" area */
+    }
 
     /* Bottom Controls */
     .reader-controls {
@@ -337,6 +340,7 @@
     <div class="reader-content">
 
         <div class="nav-zone left" x-on:click="handleZoneClick('left')"></div>
+        <div class="nav-zone center" x-on:click="handleZoneClick('center')"></div>
         <div class="nav-zone right" x-on:click="handleZoneClick('right')"></div>
 
         <div class="flex items-center justify-center h-full w-full"
@@ -1093,6 +1097,14 @@ function reader() {
 
 
         handleZoneClick(zone) {
+
+            // Center Tap: Toggle UI Visibility
+            if (zone === 'center') {
+                this.toggleUiLock();
+                return;
+            }
+
+            // Directional Taps (Left/Right)
             // Context Aware Clicking
             // If LTR: Left = Prev, Right = Next
             // If RTL: Left = Next, Right = Prev

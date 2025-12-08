@@ -206,7 +206,7 @@ class SearchService:
             # checks = [name_column.ilike(f"%{v}%") for v in values]
             # return relationship.any(or_(*checks))
 
-        elif operator == 'does_not_contain':
+        elif operator == 'does_not_contain' or operator == 'not_equal':
             return ~relationship.any(name_column.in_(values))
 
         elif operator == 'must_contain':  # AND

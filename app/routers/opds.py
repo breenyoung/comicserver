@@ -24,7 +24,7 @@ def render_xml(request: Request, context: dict):
 
 
 # 1. ROOT: List Libraries
-@router.get("/")
+@router.get("/", name="root")
 async def opds_root(request: Request, user: OPDSUser, db: SessionDep):
 
     # If Superuser, fetch ALL libraries. If regular user, use assigned.
@@ -54,7 +54,7 @@ async def opds_root(request: Request, user: OPDSUser, db: SessionDep):
 
 
 # 2. LIBRARY: List Series
-@router.get("/libraries/{library_id}")
+@router.get("/libraries/{library_id}", name="library")
 async def opds_library(library_id: int, request: Request, user: OPDSUser, db: SessionDep):
     # Security check using your existing accessible_libraries logic
     if not user.is_superuser:
@@ -91,7 +91,7 @@ async def opds_library(library_id: int, request: Request, user: OPDSUser, db: Se
 
 # 3. SERIES: List Comics (Flattening Volumes)
 
-@router.get("/series/{series_id}")
+@router.get("/series/{series_id}", name="series")
 async def opds_series(series_id: int, request: Request, user: OPDSUser, db: SessionDep):
     # ... (Previous Security Check) ...
 
@@ -120,7 +120,7 @@ async def opds_series(series_id: int, request: Request, user: OPDSUser, db: Sess
 
 
 # 4. DOWNLOAD: Serve the file
-@router.get("/download/{comic_id}")
+@router.get("/download/{comic_id}", name="download")
 async def opds_download(comic_id: int, user: OPDSUser, db: SessionDep):
     # We duplicate the logic from get_secure_comic here because we need
     # to authenticate via Basic Auth (user argument), not JWT.

@@ -31,7 +31,7 @@ def comic_to_simple_dict(comic: Comic):
     }
 
 
-@router.get("/{volume_id}")
+@router.get("/{volume_id}", name="get_volume_detail")
 async def get_volume_detail(volume: VolumeDep, db: SessionDep, current_user: CurrentUser):
     """
     Get volume summary with categorized counts.
@@ -230,7 +230,7 @@ async def get_volume_detail(volume: VolumeDep, db: SessionDep, current_user: Cur
         "colors": colors,
     }
 
-@router.get("/{volume_id}/issues", response_model=PaginatedResponse)
+@router.get("/{volume_id}/issues", response_model=PaginatedResponse, name="get_volume_issues")
 async def get_volume_issues(
         current_user: CurrentUser,
         volume_id: int,

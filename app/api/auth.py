@@ -33,7 +33,7 @@ class UserResponse(BaseModel):
     is_superuser: bool
 
 
-@router.post("/token", response_model=Token)
+@router.post("/token", response_model=Token, name="login_for_access_token")
 async def login_for_access_token(
         form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
         db: SessionDep
@@ -63,7 +63,7 @@ async def login_for_access_token(
 
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=UserResponse, name="read_users_me")
 async def read_users_me(current_user: SessionDep):
     """
     Get current user details

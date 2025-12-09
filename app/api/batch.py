@@ -19,7 +19,7 @@ class BatchActionRequest(BaseModel):
     read: bool = True
 
 
-@router.post("/read-status")
+@router.post("/read-status", name="batch_mark_read")
 async def batch_mark_read(
         payload: BatchActionRequest,
         db: SessionDep,

@@ -66,7 +66,7 @@ def _apply_library_filter(query: SqlQuery, model, allowed_ids: List[int]) -> Sql
     return query
 
 
-@router.get("/suggestions")
+@router.get("/suggestions", name="get_search_suggestions")
 async def get_search_suggestions(
         field: str,
         db: SessionDep,
@@ -143,7 +143,7 @@ async def get_search_suggestions(
     return [r[0] for r in results if r[0]]
 
 
-@router.get("/quick")
+@router.get("/quick", name="quick_search")
 async def quick_search(
         db: SessionDep,
         current_user: CurrentUser,

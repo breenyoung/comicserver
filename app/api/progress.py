@@ -23,7 +23,7 @@ def get_progress_service(
     return ReadingProgressService(db, user_id=user.id)
 
 
-@router.get("/on-deck")
+@router.get("/on-deck", name="get_on_deck_progress")
 async def get_on_deck_progress(
         service: Annotated[ReadingProgressService, Depends(get_progress_service)],
         limit: int = 10
@@ -70,7 +70,7 @@ async def get_on_deck_progress(
 
     return results
 
-@router.get("/{comic_id}")
+@router.get("/{comic_id}", name="get_comic_progress")
 async def get_comic_progress(comic_id: int,
                              service: Annotated[ReadingProgressService, Depends(get_progress_service)]):
     """Get reading progress for a specific comic"""
@@ -92,7 +92,7 @@ async def get_comic_progress(comic_id: int,
     }
 
 
-@router.post("/{comic_id}")
+@router.post("/{comic_id}", name="update_comic_progress")
 async def update_comic_progress(
         comic_id: int,
         request: UpdateProgressRequest,
@@ -135,7 +135,7 @@ async def update_comic_progress(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{comic_id}/mark-read")
+@router.post("/{comic_id}/mark-read", name="mark_comic_as_read")
 async def mark_comic_as_read(comic_id: int,
                              service: Annotated[ReadingProgressService, Depends(get_progress_service)],
                              db: SessionDep):
@@ -158,7 +158,7 @@ async def mark_comic_as_read(comic_id: int,
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@router.delete("/{comic_id}")
+@router.delete("/{comic_id}", name="mark_comic_as_unread")
 async def mark_comic_as_unread(comic_id: int,
                                service: Annotated[ReadingProgressService, Depends(get_progress_service)],
                                db: SessionDep):
@@ -180,7 +180,7 @@ async def mark_comic_as_unread(comic_id: int,
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/")
+@router.get("/", name="get_recent_progress")
 async def get_recent_progress(
         service: Annotated[ReadingProgressService, Depends(get_progress_service)],
         filter: Annotated[str, Query(pattern="^(recent|in_progress|completed)$")] = "recent",

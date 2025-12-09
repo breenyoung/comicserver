@@ -7,7 +7,7 @@ from app.services.backup import BackupService
 router = APIRouter()
 
 
-@router.post("/cleanup")
+@router.post("/cleanup", name="run_cleanup_task")
 async def run_cleanup_task(
         db: SessionDep,
         admin: AdminUser
@@ -25,7 +25,7 @@ async def run_cleanup_task(
     }
 
 
-@router.post("/backup")
+@router.post("/backup", name="run_backup_task")
 async def run_backup_task(
         admin: AdminUser
 ):
@@ -40,7 +40,7 @@ async def run_backup_task(
         "details": result
     }
 
-@router.post("/refresh-descriptions")
+@router.post("/refresh-descriptions", name="run_refresh_descriptions_task")
 async def run_refresh_descriptions_task(
         db: SessionDep,
         admin: AdminUser
@@ -56,7 +56,7 @@ async def run_refresh_descriptions_task(
         "stats": stats
     }
 
-@router.post("/refresh-colorscapes")
+@router.post("/refresh-colorscapes", name="run_colorscape_refresh_task")
 async def run_colorscape_refresh_task(
         db: SessionDep,
         admin: AdminUser

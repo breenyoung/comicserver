@@ -26,7 +26,7 @@ def _has_library_access(library_id: int, current_user: CurrentUser) -> bool:
     return True
 
 
-@router.get("/")
+@router.get("/", name="list_libraries")
 async def list_libraries(db: SessionDep, current_user: CurrentUser):
     """List libraries accessible to the current user"""
 
@@ -64,13 +64,13 @@ async def list_libraries(db: SessionDep, current_user: CurrentUser):
     return results
 
 
-@router.get("/{library_id}")
+@router.get("/{library_id}", name="get_library")
 async def get_library(library: LibraryDep):
 
     return library
 
 
-@router.get("/{library_id}/series", response_model=PaginatedResponse)
+@router.get("/{library_id}/series", response_model=PaginatedResponse, name="get_library_series")
 async def get_library_series(
         library: LibraryDep,
         params: Annotated[PaginationParams, Depends()],
@@ -244,7 +244,7 @@ async def scan_library(
     # Returns: {"status": "queued", "job_id": 123, "message": "..."}
     return result
 
-@router.get("/status/scanner")
+@router.get("/status/scanner", name="get_scanner_status")
 async def get_scanner_status():
     """Check if a scan is currently running"""
     return scan_manager.get_status()

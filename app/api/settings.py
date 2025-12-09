@@ -7,7 +7,7 @@ from app.schemas.setting import SettingUpdate, SettingResponse
 
 router = APIRouter()
 
-@router.get("/", response_model=Dict[str, List[SettingResponse]], status_code=200)
+@router.get("/", response_model=Dict[str, List[SettingResponse]], status_code=200, name="get_settings")
 def get_settings(db: SessionDep, admin: AdminUser):
     """Get all settings grouped by category"""
     svc = SettingsService(db)

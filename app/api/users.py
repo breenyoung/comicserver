@@ -71,7 +71,7 @@ class UserPasswordUpdateRequest(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8)
 
-@router.get("/me/dashboard")
+@router.get("/me/dashboard", name="get_user_dashboard")
 async def get_user_dashboard(db: SessionDep, current_user: CurrentUser):
     """
     Aggregate stats and lists for the User Dashboard.
@@ -137,7 +137,7 @@ async def get_user_dashboard(db: SessionDep, current_user: CurrentUser):
     }
 
 
-@router.post("/me/avatar")
+@router.post("/me/avatar", name="upload_avatar")
 async def upload_avatar(
         file: UploadFile = File(...),
         db: SessionDep = SessionDep,
@@ -179,7 +179,7 @@ async def upload_avatar(
     }
 
 # Helper to serve avatar (add to users router or generic image router)
-@router.get("/{user_id}/avatar")
+@router.get("/{user_id}/avatar", name="get_avatar")
 async def get_avatar(user_id: int, db: SessionDep):
     """Serve user avatar"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -196,7 +196,7 @@ async def get_avatar(user_id: int, db: SessionDep):
 
     return FileResponse(file_path)
 
-@router.put("/me/password")
+@router.put("/me/password", name="update_password")
 async def update_password(
     payload: UserPasswordUpdateRequest,
     db: SessionDep,

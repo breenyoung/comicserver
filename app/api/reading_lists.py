@@ -26,7 +26,7 @@ async def list_reading_lists(db: SessionDep, current_user: CurrentUser):
     reading_lists = db.query(ReadingList).options(
         joinedload(ReadingList.items).joinedload(ReadingListItem.comic).joinedload(Comic.volume).joinedload(
             Volume.series)
-    ).all()
+    ).order_by(ReadingList.name).all()
 
 
     result = []

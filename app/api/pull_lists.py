@@ -21,7 +21,7 @@ router = APIRouter()
 @router.get("/", name="list")
 def get_my_lists(db: SessionDep, current_user: CurrentUser):
     """List all pull lists for the current user."""
-    return db.query(PullList).filter(PullList.user_id == current_user.id).all()
+    return db.query(PullList).filter(PullList.user_id == current_user.id).order_by(PullList.name).all()
 
 
 @router.post("/", name="create")

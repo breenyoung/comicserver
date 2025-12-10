@@ -30,7 +30,7 @@ async def list_collections(current_user: CurrentUser, db: SessionDep):
     collections = db.query(Collection).options(
         joinedload(Collection.items).joinedload(CollectionItem.comic).joinedload(Comic.volume).joinedload(
             Volume.series)
-    ).all()
+    ).order_by(Collection.name).all()
 
     result = []
     for col in collections:

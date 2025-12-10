@@ -65,7 +65,7 @@ def execute_smart_list(
 @router.get("/", response_model=List[SmartListResponse], name="list")
 def get_my_smart_lists(db: SessionDep, current_user: CurrentUser):
     """List all smart lists for the current user."""
-    smart_lists = db.query(SmartList).filter(SmartList.user_id == current_user.id).all()
+    smart_lists = db.query(SmartList).filter(SmartList.user_id == current_user.id).order_by(SmartList.name).all()
 
     return [
         {

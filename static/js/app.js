@@ -144,7 +144,7 @@ document.addEventListener('alpine:init', () => {
         async fetchItems() {
             try {
                 // Call the "Auto-Fire" endpoint we made earlier
-                const res = await fetch(window.url(`/api/smart-lists/${this.listId}/items?limit=15`));
+                const res = await fetch(window.parker.url(`/api/smart-lists/${this.listId}/items?limit=15`));
                 if (res.ok) {
                     const data = await res.json();
                     this.items = data.items;
@@ -448,7 +448,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Export utilities
-window.comicServer = { ...(window.comicServer || {}),
+window.parker = { ...(window.parker || {}),
     showToast,
     debounce,
     formatFileSize,

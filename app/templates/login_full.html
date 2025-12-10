@@ -5,19 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Parker</title>
 
-    <script>
-        // Global Configuration
-        window.APP_CONFIG = {
-            baseUrl: "{{ base_url }}" || "",
-        };
-
-        // JS Helper Function
-        window.url = function(path) {
-            const base = window.APP_CONFIG.baseUrl;
-            const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-            return base ? `${base}/${cleanPath}` : `/${cleanPath}`;
-        };
-    </script>
+    {# Used for including context-sensitive path data #}
+    {% from "partials/config_context.html" import config_context %}
+    {{ config_context(request, base_url) }}
 
     <script src="https://cdn.tailwindcss.com"></script>
 
@@ -106,7 +96,8 @@
         </div>
 
         <div class="absolute bottom-6 text-gray-500 text-xs">
-            Powered by Parker v1.0
+            Powered by
+            <a href="https://github.com/parker/parker" target="_blank" class="text-gray-500 hover:text-blue-400 font-bold transition-colors">{{ app_name }}</a> <span class="mx-1">v{{ app_version }}</span>
         </div>
 
     </div>
@@ -152,7 +143,7 @@ function loginCycler() {
         async fetchBackgrounds() {
             try {
                 // Fetch random covers from our new endpoint
-                const res = await fetch(window.url('/api/comics/random/backgrounds'));
+                const res = await fetch(window.parker.url('/api/comics/random/backgrounds'));
                 if (res.ok) {
                     this.images = await res.json();
                     if (this.images.length > 0) {
@@ -212,7 +203,7 @@ function loginCycler() {
 
             try {
 
-                const res = await fetch(window.url('/api/auth/token'), {
+                const res = await fetch(window.parker.url('/api/auth/token'), {
                     method: 'POST',
                     body: formData
                 });
@@ -241,10 +232,10 @@ function loginCycler() {
                 // 2. Validate it (Security: Prevent Open Redirects to external sites)
                 // We only allow relative paths that start with "/"
                 if (nextUrl && nextUrl.startsWith('/') && !nextUrl.startsWith('//')) {
-                    window.location.href = window.url(nextUrl);
+                    window.location.href = window.parker.url(nextUrl);
                 } else {
                     // Default Fallback
-                    window.location.href = window.url('/');
+                    window.location.href = window.parker.url('/');
                 }
 
             } catch (e) {

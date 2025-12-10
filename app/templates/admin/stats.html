@@ -38,7 +38,7 @@
                 </div>
 
                 <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 shadow-lg">
-                    <div class="text-3xl font-bold text-purple-400 mb-1" x-text="window.comicServer.formatBytes(stats?.storage?.total_bytes)"></div>
+                    <div class="text-3xl font-bold text-purple-400 mb-1" x-text="window.parker.formatBytes(stats?.storage?.total_bytes)"></div>
                     <div class="text-sm text-gray-400">Disk Usage</div>
                 </div>
             </div>
@@ -74,7 +74,7 @@
             </div>
         </div>
 
-        <div x-data="{ genreStats: [] }" x-init="genreStats = await (await fetch(window.url('/api/stats/genres'))).json()">
+        <div x-data="{ genreStats: [] }" x-init="genreStats = await (await fetch(window.parker.url('/api/stats/genres'))).json()">
             <h2 class="text-lg font-bold text-gray-400 mb-4 uppercase tracking-wider">Collection Insights</h2>
 
             <div class="bg-gray-800 rounded-lg border border-gray-700 shadow-lg overflow-hidden">
@@ -121,7 +121,7 @@
                             <template x-for="item in genreStats" :key="item.genre">
                                 <div class="flex items-center justify-between p-3 bg-gray-900/50 rounded border border-gray-700/50">
                                     <span class="text-gray-300" x-text="item.genre"></span>
-                                    <span class="font-mono text-blue-400 text-sm" x-text="window.comicServer.formatBytes(item.size_bytes)"></span>
+                                    <span class="font-mono text-blue-400 text-sm" x-text="window.parker.formatBytes(item.size_bytes)"></span>
                                 </div>
                             </template>
                         </div>
@@ -146,7 +146,7 @@ function serverStats() {
         async loadStats() {
             this.loading = true;
             try {
-                const res = await fetch(window.url('/api/stats/'));
+                const res = await fetch(window.parker.url('/api/stats/'));
                 if (res.ok) {
                     this.stats = await res.json();
                 } else {

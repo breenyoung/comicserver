@@ -72,7 +72,7 @@ function settingsManager() {
         settings: {},
         
         async init() {
-            const res = await fetch(window.url('/api/settings/'));
+            const res = await fetch(window.parker.url('/api/settings/'));
             this.settings = await res.json();
             
             // Initialize tempValue for inputs (so we don't bind directly to the committed value until save)
@@ -87,7 +87,7 @@ function settingsManager() {
             setting.value = newValue; 
 
             try {
-                const res = await fetch(window.url(`/api/settings/${setting.key}`), {
+                const res = await fetch(window.parker.url(`/api/settings/${setting.key}`), {
                     method: 'PATCH',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ value: newValue })
@@ -98,10 +98,10 @@ function settingsManager() {
                 // Refresh local state to match server format
                 const updated = await res.json();
                 setting.value = updated.value; 
-                window.comicServer.showToast("Setting saved", "success");
+                window.parker.showToast("Setting saved", "success");
             } catch(e) {
                 setting.value = oldVal; // Revert
-                window.comicServer.showToast("Error saving setting", "error");
+                window.parker.showToast("Error saving setting", "error");
             }
         },
         

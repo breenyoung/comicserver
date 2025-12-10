@@ -351,7 +351,7 @@ document.addEventListener('alpine:init', () => {
             }
             try {
                 // Call our API
-                const res = await fetch(window.url(`/api/search/suggestions?field=${rule.field}&query=${this.input}`));
+                const res = await fetch(window.parker.url(`/api/search/suggestions?field=${rule.field}&query=${this.input}`));
                 this.suggestions = await res.json();
             } catch(e) { console.error(e); }
         },
@@ -523,7 +523,7 @@ document.addEventListener('alpine:init', () => {
             console.log("payload", payload);
 
             try {
-                const res = await fetch(window.comicServer.route('comics.search'), {
+                const res = await fetch(window.parker.route('comics.search'), {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(payload)
@@ -545,8 +545,8 @@ document.addEventListener('alpine:init', () => {
             try {
 
                 const [savedRes, smartRes] = await Promise.all([
-                    fetch(window.url('/api/saved-searches/')),
-                    fetch(window.url('/api/smart-lists/'))
+                    fetch(window.parker.url('/api/saved-searches/')),
+                    fetch(window.parker.url('/api/smart-lists/'))
                 ]);
 
                 if (savedRes.ok) this.savedSearches = await savedRes.json();
@@ -579,7 +579,7 @@ document.addEventListener('alpine:init', () => {
             };
 
             try {
-                const res = await fetch(window.url('/api/saved-searches/'), {
+                const res = await fetch(window.parker.url('/api/saved-searches/'), {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(payload)
@@ -590,16 +590,16 @@ document.addEventListener('alpine:init', () => {
                     this.newSearchName = '';
                     this.loadedListId = null;
                     await this.loadSavedList();
-                    window.comicServer.showToast("Search configuration saved!", "success");
+                    window.parker.showToast("Search configuration saved!", "success");
                 }
             } catch(e) { console.error(e); }
         },
 
         async deleteSearch(id) {
             if(!confirm("Delete this saved search?")) return;
-            await fetch(window.url(`/api/saved-searches/${id}`), { method: 'DELETE' });
+            await fetch(window.parker.url(`/api/saved-searches/${id}`), { method: 'DELETE' });
             await this.loadSavedList(); // Refresh list
-            window.comicServer.showToast("Saved Search deleted", "success");
+            window.parker.showToast("Saved Search deleted", "success");
         },
 
         applySearch(item) {
@@ -686,7 +686,7 @@ document.addEventListener('alpine:init', () => {
 
                 if(this.loadedListId === null) {
                     // Create
-                    const res = await fetch(window.url('/api/smart-lists/'), {
+                    const res = await fetch(window.parker.url('/api/smart-lists/'), {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(payload)
@@ -694,15 +694,15 @@ document.addEventListener('alpine:init', () => {
 
                     if (res.ok) {
                         this.saveModalOpen = false;
-                        window.comicServer.showToast("Smart List created!", "success");
+                        window.parker.showToast("Smart List created!", "success");
                         this.newSearchName = '';
                     } else {
-                        window.comicServer.showToast("Failed to create list.", "error");
+                        window.parker.showToast("Failed to create list.", "error");
                     }
 
                 } else {
                     // Update
-                    const res = await fetch(window.url(`/api/smart-lists/${this.loadedListId}`), {
+                    const res = await fetch(window.parker.url(`/api/smart-lists/${this.loadedListId}`), {
                         method: 'PATCH',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(payload)
@@ -710,21 +710,21 @@ document.addEventListener('alpine:init', () => {
 
                     if (res.ok) {
                         this.saveModalOpen = false;
-                        window.comicServer.showToast("Smart List updated!", "success");
+                        window.parker.showToast("Smart List updated!", "success");
                     } else {
-                        window.comicServer.showToast("Failed to update list.", "error");
+                        window.parker.showToast("Failed to update list.", "error");
                     }
                 }
             } catch(e) {
                 console.error(e);
-                window.comicServer.showToast("Network error.", "error");
+                window.parker.showToast("Network error.", "error");
             }
         },
 
         // Helper to get name (Optional polish)
         async fetchLibraryName(id) {
             try {
-                const res = await fetch(window.url(`/api/libraries/${id}`));
+                const res = await fetch(window.parker.url(`/api/libraries/${id}`));
                 if(res.ok) {
                     const lib = await res.json();
                     this.contextLibraryName = lib.name;

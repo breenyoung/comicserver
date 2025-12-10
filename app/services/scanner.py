@@ -18,7 +18,7 @@ from app.services.credits import CreditService
 from app.services.reading_list import ReadingListService
 from app.services.collection import CollectionService
 from app.services.images import ImageService
-
+from app.services.maintenance import MaintenanceService
 
 class LibraryScanner:
     """Scans library directories and imports comics with batch processing"""
@@ -163,11 +163,19 @@ class LibraryScanner:
         self.reading_list_service.cleanup_empty_lists()
         self.collection_service.cleanup_empty_collections()
 
+        # Orphan Cleanup (Series/Volumes) ---
+        self.logger.info("Cleaning up orphaned series and volumes, tags...")
+        maintenance = MaintenanceService(self.db)
+        cleanup_stats = maintenance.cleanup_orphans()
+        self.logger.info(f"Cleanup Stats: {cleanup_stats}")
+        # --------------------------------------------
+
         # Update library scan time
         self.library.last_scanned = datetime.now(timezone.utc)
         self.db.commit()
 
         elapsed_time = round(time.time() - start_time, 2)
+        self.logger.info(f"Elapsed time: {elapsed_time} seconds")
 
         return {
             "library": self.library.name,

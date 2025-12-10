@@ -2,7 +2,8 @@ from sqlalchemy.orm import Session
 
 from app.models.tags import Character, Team, Location
 from app.models.credits import Person
-from app.models.comic import Comic
+from app.models.comic import Comic, Volume
+from app.models.series import Series
 from app.models.reading_list import ReadingList
 from app.models.collection import Collection
 
@@ -19,6 +20,8 @@ class MaintenanceService:
         Delete metadata entities that are no longer associated with any comics.
         """
         stats = {
+            "series": 0,
+            "volumes": 0,
             "characters": 0,
             "teams": 0,
             "locations": 0,
@@ -27,26 +30,36 @@ class MaintenanceService:
             "empty_collections": 0
         }
 
-        # 1. Clean Tags (Characters)
+        # 1. Clean Empty Volumes (No comics linked)
+        # We use synchronize_session=False for speed since we are in a batch operation
+        deleted = self.db.query(Volume).filter(~Volume.comics.any()).delete(synchronize_session=False)
+        stats["volumes"] = deleted
+
+        # 2. Clean Empty Series (No volumes linked)
+        # Note: We do this AFTER cleaning volumes so we catch series that just became empty
+        deleted = self.db.query(Series).filter(~Series.volumes.any()).delete(synchronize_session=False)
+        stats["series"] = deleted
+
+        # 3. Clean Tags (Characters)
         # Logic: Delete Character where NOT EXISTS (select 1 from comic_characters where character_id = characters.id)
         # SQLAlchemy efficient way:
         deleted = self.db.query(Character).filter(~Character.comics.any()).delete(synchronize_session=False)
         stats["characters"] = deleted
 
-        # 2. Clean Teams
+        # 4. Clean Teams
         deleted = self.db.query(Team).filter(~Team.comics.any()).delete(synchronize_session=False)
         stats["teams"] = deleted
 
-        # 3. Clean Locations
+        # 5. Clean Locations
         deleted = self.db.query(Location).filter(~Location.comics.any()).delete(synchronize_session=False)
         stats["locations"] = deleted
 
-        # 4. Clean People (Credits)
+        # 6. Clean People (Credits)
         # A person is an orphan if they have no 'credits' entries
         deleted = self.db.query(Person).filter(~Person.credits.any()).delete(synchronize_session=False)
         stats["people"] = deleted
 
-        # 5. Clean Empty Containers (Optional, but good hygiene)
+        # 7. Clean Empty Containers (auto-generated only)
         deleted = self.db.query(ReadingList).filter(~ReadingList.items.any()).filter(ReadingList.auto_generated == True).delete(synchronize_session=False)
         stats["empty_lists"] = deleted
 

@@ -69,6 +69,20 @@ class SettingsService:
             ]
         },
         {
+            "key": "system.task.scan.interval",
+            "value": "daily",
+            "category": "system",
+            "data_type": "select",
+            "label": "Scheduled Library Scan",
+            "description": "Safety net scan for all libraries (useful if folder watching is unreliable).",
+            "options": [
+                {"label": "Daily", "value": "daily"},
+                {"label": "Weekly", "value": "weekly"},
+                {"label": "Disabled", "value": "disabled"}
+            ]
+        },
+
+        {
             "key": "backup.retention_days", "value": "7",
             "category": "backup", "data_type": "int",
             "label": "Backup Retention (Days)"

@@ -19,15 +19,6 @@ from app.core.security import get_password_hash
 from app.services.settings_service import SettingsService
 from app.services.scheduler import scheduler_service
 
-# IMPORTANT: Import all models here so SQLAlchemy knows about them
-# from app.models.library import Library
-# from app.models.series import Series
-# from app.models.comic import Volume, Comic
-# from app.models.tags import Character, Team, Location
-# from app.models.credits import Person, ComicCredit
-# from app.models.reading_list import ReadingList, ReadingListItem
-# from app.models.collection import Collection, CollectionItem
-# from app.models.reading_list import ReadingList, ReadingListItem
 
 from app.models.user import User
 

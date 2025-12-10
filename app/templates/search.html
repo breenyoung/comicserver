@@ -466,7 +466,7 @@ document.addEventListener('alpine:init', () => {
 
                 // Overwrite the default rule with the URL rule
                 this.rules = [{
-                    id: 1,
+                    id: Date.now(),
                     field: field,
                     operator: operator,
                     // Check if value exists before wrapping in array.

@@ -7,6 +7,8 @@
 {% from "partials/page_context.html" import page_context %}
 {{ page_context(cover.id, cover.color_palette) }}
 
+{% include "partials/dynamic_background.html" %}
+
 <div class="relative z-10">
 
     <div class="space-y-6" x-data="volumeDetail()" x-on:set-read-filter="handleReadFilter($event.detail)" x-on:toggle-sort="handleToggleSort()">

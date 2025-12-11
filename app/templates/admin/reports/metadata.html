@@ -72,7 +72,7 @@
 
                     <div class="flex items-center">
                         <a 
-                            :href="`/search?field=${getSearchField(item.label)}&operator=is_empty`"
+                            :href="window.parker.route('pages.search', {}, `field=${getSearchField(item.label)}&operator=is_empty`)"
                             class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors whitespace-nowrap"
                         >
                             View All
@@ -104,7 +104,7 @@ function healthReport() {
         async loadReport() {
             this.loading = true;
             try {
-                const res = await fetch('/api/reports/metadata');
+                const res = await fetch(window.parker.route('reports.metadata_health'));
                 if(res.ok) this.report = await res.json();
             } catch(e) { console.error(e); } 
             finally { this.loading = false; }

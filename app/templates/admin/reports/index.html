@@ -6,7 +6,7 @@
 <div class="max-w-6xl mx-auto">
     
     <div class="mb-8 flex items-center gap-4">
-        <a href="/admin" class="text-gray-400 hover:text-white transition-colors">
+        <a :href="window.parker.route('admin.dashboard')" class="text-gray-400 hover:text-white transition-colors">
             <span class="text-xl">←</span> Back
         </a>
         <div>
@@ -17,7 +17,7 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        <a href="/admin/reports/missing" class="block bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-red-500 rounded-lg p-6 transition-all group shadow-lg">
+        <a :href="window.parker.route('admin.reports_missing')" class="block bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-red-500 rounded-lg p-6 transition-all group shadow-lg">
             <div class="flex items-center justify-between mb-4">
                 <div class="w-12 h-12 bg-red-900/30 rounded-lg flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
                     🧩
@@ -28,7 +28,7 @@
             <p class="text-sm text-gray-400">Identify gaps in your collection based on series metadata counts.</p>
         </a>
 
-        <a href="/admin/reports/storage" class="block bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-yellow-500 rounded-lg p-6 transition-all group shadow-lg">
+        <a :href="window.parker.route('admin.reports_storage')" class="block bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-yellow-500 rounded-lg p-6 transition-all group shadow-lg">
             <div class="flex items-center justify-between mb-4">
                 <div class="w-12 h-12 bg-yellow-900/30 rounded-lg flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
                     💾
@@ -39,7 +39,7 @@
             <p class="text-sm text-gray-400">Breakdown of disk usage by library, series, and file format.</p>
         </a>
 
-        <a href="/admin/reports/metadata" class="block bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-purple-500 rounded-lg p-6 transition-all group shadow-lg">
+        <a :href="window.parker.route('admin.reports_metadata')" class="block bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-purple-500 rounded-lg p-6 transition-all group shadow-lg">
             <div class="flex items-center justify-between mb-4">
                 <div class="w-12 h-12 bg-purple-900/30 rounded-lg flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
                     ❤️
@@ -50,7 +50,7 @@
             <p class="text-sm text-gray-400">Audit your library's metadata quality to find items missing summaries, dates, or other key tags.</p>
         </a>
 
-        <a href="/admin/reports/duplicates" class="block bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-blue-500 rounded-lg p-6 transition-all group shadow-lg">
+        <a :href="window.parker.route('admin.reports_duplicates')" class="block bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-blue-500 rounded-lg p-6 transition-all group shadow-lg">
             <div class="flex items-center justify-between mb-4">
                 <div class="w-12 h-12 bg-blue-900/30 rounded-lg flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
                     👯
@@ -60,7 +60,7 @@
             <h3 class="text-xl font-bold text-white mb-2">Duplicate Analysis</h3>
             <p class="text-sm text-gray-400">Identify and resolve instances where you have multiple files or versions of the same issue.</p>
         </a>
-        <a href="/admin/reports/corrupt" class="block bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-orange-500 rounded-lg p-6 transition-all group shadow-lg">
+        <a :href="window.parker.route('admin.reports_corrupt')" class="block bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-orange-500 rounded-lg p-6 transition-all group shadow-lg">
             <div class="flex items-center justify-between mb-4">
                 <div class="w-12 h-12 bg-orange-900/30 rounded-lg flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
                     ⚠️

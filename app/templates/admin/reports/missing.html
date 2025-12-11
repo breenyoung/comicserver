@@ -47,7 +47,7 @@
                         <tr class="hover:bg-gray-700/50 transition-colors group">
                             <td class="px-6 py-4 text-gray-400" x-text="item.library"></td>
                             <td class="px-6 py-4">
-                                <a :href="`/series/${item.series_id}`" class="text-white font-medium hover:text-blue-400 hover:underline decoration-blue-400/50" x-text="item.series"></a>
+                                <a :href="window.parker.route('pages.series_detail', { series_id: item.series_id })" class="text-white font-medium hover:text-blue-400 hover:underline decoration-blue-400/50" x-text="item.series"></a>
                             </td>
                             <td class="px-6 py-4 text-gray-300" x-text="item.volume"></td>
                             <td class="px-6 py-4">
@@ -105,7 +105,7 @@ function missingReport() {
             this.loading = true;
             try {
                 // Pass pagination params
-                const res = await fetch(`/api/reports/missing?page=${page}&size=${this.pageSize}`);
+                const res = await fetch(window.parker.route('reports.missing_issues', {}, `page=${page}&size=${this.pageSize}`));
                 if(res.ok) {
                     const data = await res.json();
                     this.items = data.items;

@@ -6,72 +6,72 @@ from app.core.templates import templates
 
 router = APIRouter()
 
-@router.get("/", response_class=HTMLResponse, name="dashboard")
+@router.get("/", response_class=HTMLResponse, name="dashboard", tags=['admin'])
 async def admin_dashboard(request: Request, admin_user: AdminUser):
     """Admin Dashboard / Hub"""
     return templates.TemplateResponse(request=request, name="admin/dashboard.html")
 
-@router.get("/jobs", response_class=HTMLResponse, name="jobs")
+@router.get("/jobs", response_class=HTMLResponse, name="jobs", tags=['admin'])
 async def admin_jobs_page(request: Request, admin_user: AdminUser):
     """Serve the Admin Job History page"""
     return templates.TemplateResponse(request=request, name="admin/jobs.html")
 
-@router.get("/users", response_class=HTMLResponse, name="users")
+@router.get("/users", response_class=HTMLResponse, name="users", tags=['admin'])
 async def admin_users_page(request: Request, admin_user: AdminUser):
     """Serve the Admin User Management page"""
     return templates.TemplateResponse(request=request, name="admin/users.html")
 
-@router.get("/libraries", response_class=HTMLResponse, name="libraries")
+@router.get("/libraries", response_class=HTMLResponse, name="libraries", tags=['admin'])
 async def admin_libraries_page(request: Request, admin_user: AdminUser):
     """Serve the Admin library Management page"""
     return templates.TemplateResponse(request=request, name="admin/libraries.html")
 
-@router.get("/tasks", response_class=HTMLResponse, name="tasks")
+@router.get("/tasks", response_class=HTMLResponse, name="tasks", tags=['admin'])
 async def admin_tasks_page(request: Request, admin_user: AdminUser):
     """Serve the Admin Tasks page"""
     return templates.TemplateResponse(request=request, name="admin/tasks.html")
 
-@router.get("/stats", response_class=HTMLResponse, name="stats")
+@router.get("/stats", response_class=HTMLResponse, name="stats", tags=['admin'])
 async def admin_stats_page(request: Request, admin_user: AdminUser):
     """Serve the Admin Statistics page"""
     return templates.TemplateResponse(request=request, name="admin/stats.html")
 
-@router.get("/settings", response_class=HTMLResponse, name="settings")
+@router.get("/settings", response_class=HTMLResponse, name="settings", tags=['admin'])
 async def admin_settings_page(request: Request, admin_user: AdminUser):
     """Serve the Admin Settings page"""
     return templates.TemplateResponse(request=request, name="admin/settings.html")
 
-@router.get("/reports", response_class=HTMLResponse, name="reports")
+@router.get("/reports", response_class=HTMLResponse, name="reports", tags=['admin'])
 async def admin_reports_index_page(request: Request, admin_user: AdminUser):
     """Serve the Admin index report page"""
     return templates.TemplateResponse(request=request, name="admin/reports/index.html")
 
-@router.get("/reports/missing", response_class=HTMLResponse, name="reports_missing")
+@router.get("/reports/missing", response_class=HTMLResponse, name="reports_missing", tags=['admin'])
 async def admin_reports_missing_page(request: Request, admin_user: AdminUser):
     """Serve the Admin Missing report page"""
     return templates.TemplateResponse(request=request, name="admin/reports/missing.html")
 
-@router.get("/reports/storage", response_class=HTMLResponse, name="reports_storage")
+@router.get("/reports/storage", response_class=HTMLResponse, name="reports_storage", tags=['admin'])
 async def admin_reports_storage_page(request: Request, admin_user: AdminUser):
     """Serve the Admin Storage report page"""
     return templates.TemplateResponse(request=request, name="admin/reports/storage.html")
 
-@router.get("/reports/metadata", response_class=HTMLResponse, name="reports_metadata")
+@router.get("/reports/metadata", response_class=HTMLResponse, name="reports_metadata", tags=['admin'])
 async def admin_reports_metadata_page(request: Request, admin_user: AdminUser):
     """Serve the Admin Metadata report page"""
     return templates.TemplateResponse(request=request, name="admin/reports/metadata.html")
 
-@router.get("/reports/duplicates", response_class=HTMLResponse, name="reports_duplicates")
+@router.get("/reports/duplicates", response_class=HTMLResponse, name="reports_duplicates", tags=['admin'])
 async def admin_reports_duplicates_page(request: Request, admin_user: AdminUser):
     """Serve the Admin Duplicates report page"""
     return templates.TemplateResponse(request=request, name="admin/reports/duplicates.html")
 
-@router.get("/reports/corrupt", response_class=HTMLResponse, name="reports_corrupt")
+@router.get("/reports/corrupt", response_class=HTMLResponse, name="reports_corrupt", tags=['admin'])
 async def admin_reports_corrupt_page(request: Request, admin_user: AdminUser):
     """Serve the Admin Duplicates report page"""
     return templates.TemplateResponse(request=request, name="admin/reports/corrupt.html")
 
-@router.get("/migration", response_class=HTMLResponse, name="migration")
+@router.get("/migration", response_class=HTMLResponse, name="migration", tags=['admin'])
 async def admin_migration_page(request: Request, admin_user: AdminUser):
     """Serve the Admin migration page"""
     return templates.TemplateResponse(request=request, name="admin/migration.html")

@@ -13,7 +13,6 @@ services:
     environment:
       - DATABASE_URL=sqlite:////app/storage/database/comics.db
       - COMICS_PATH=/comics
-      - APP_NAME=Comic Server
       # Generate a strong key: openssl rand -hex 32
       - SECRET_KEY=CHANGE_THIS_TO_A_REAL_SECRET_KEY
       # If you need to tell the app where unrar is in the container

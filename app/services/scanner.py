@@ -59,7 +59,6 @@ class LibraryScanner:
         BATCH_SIZE = 50
         pending_changes = 0
 
-        print(f"Scanning {library_path}... (force={force})")
         self.logger.info(f"Scanning {library_path}... (force={force})")
 
         # Start timing
@@ -67,7 +66,6 @@ class LibraryScanner:
 
         # 1. OPTIMIZATION: Pre-fetch all existing comics for this library.
         # This avoids executing a SELECT query for every single file in the loop.
-        print("Pre-fetching existing file list...")
         self.logger.info("Pre-fetching existing file list...")
         db_comics = self.db.query(Comic).join(Volume).join(Series).filter(
             Series.library_id == self.library.id
@@ -101,10 +99,8 @@ class LibraryScanner:
                         else:
                             # Update existing
                             if force:
-                                print(f"Force scanning: {file_path.name}")
                                 self.logger.info(f"Force scanning: {file_path.name}")
                             else:
-                                print(f"Updating modified: {file_path.name}")
                                 self.logger.info(f"Updating modified: {file_path.name}")
 
                             comic = self._update_comic(existing, file_path, file_mtime, file_size_bytes)
@@ -134,7 +130,6 @@ class LibraryScanner:
                     # 2. OPTIMIZATION: Batch Commit
                     # Only hit the disk once every BATCH_SIZE items
                     if pending_changes >= BATCH_SIZE:
-                        print(f"Committing batch of {pending_changes} items...")
                         self.logger.info(f"Committing batch of {pending_changes} items...")
                         self.db.commit()
                         pending_changes = 0
@@ -142,7 +137,6 @@ class LibraryScanner:
                 except Exception as e:
                     # If an error occurs, we log it but try not to kill the whole scan
                     errors.append({"file": str(file_path), "error": str(e)})
-                    print(f"Error processing {file_path}: {e}")
                     self.logger.error(f"Error processing {file_path}: {e}")
                     # In case of database error, we might need to rollback the current transaction
                     # to proceed, but that would lose the pending batch.
@@ -151,7 +145,6 @@ class LibraryScanner:
 
         # Commit any remaining items
         if pending_changes > 0:
-            print(f"Committing final batch of {pending_changes} items...")
             self.logger.info(f"Committing final batch of {pending_changes} items...")
             self.db.commit()
 
@@ -199,7 +192,6 @@ class LibraryScanner:
         # Iterate over the map of comics we knew about at start
         for file_path, comic in existing_map.items():
             if file_path not in scanned_paths_on_disk:
-                print(f"Removing deleted comic: {comic.filename}")
                 self.logger.info(f"Removing deleted comic: {comic.filename}")
                 self.db.delete(comic)
                 deleted += 1
@@ -320,7 +312,6 @@ class LibraryScanner:
         # Note: SQLAlchemy tracks dirty state, so this will trigger an UPDATE on commit
 
 
-        print(f"Imported: {series_name} #{metadata.get('number', '?')} - {file_path.name}")
         self.logger.info(f"Imported: {series_name} #{metadata.get('number', '?')} - {file_path.name}")
 
         return comic
@@ -422,7 +413,6 @@ class LibraryScanner:
                 pages = archive.get_pages()
 
                 if not pages:
-                    print(f"Warning: No valid image pages found in {file_path.name}")
                     self.logger.warning(f"Warning: No valid image pages found in {file_path.name}")
                     return None
 
@@ -445,7 +435,6 @@ class LibraryScanner:
                 return metadata
 
         except Exception as e:
-            print(f"Error extracting metadata from {file_path}: {e}")
             self.logger.error(f"Error extracting metadata from {file_path}: {e}")
             return None
 

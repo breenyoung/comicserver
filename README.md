@@ -123,6 +123,7 @@ Parker is a self‑hosted media server for comic books (CBZ/CBR). It follows a *
 - Pin libraries to front page
 - Improve admin Add Library dialog to be able to browse to a folder rather than type it in
 - Support multiple folder locations per library
+- Light metadata editing with file writeback
 
 ## 🤝 Contributing
 Parker is early‑stage but stable. Contributions are welcome!

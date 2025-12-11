@@ -106,7 +106,7 @@ Parker is a self‑hosted media server for comic books (CBZ/CBR). It follows a *
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/parker.git
+   git clone https://github.com/parker-server/parker.git
    cd parker
    
 2. ```docker-compose up -d```

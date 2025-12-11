@@ -7,7 +7,8 @@ from watchdog.events import FileSystemEventHandler
 from app.database import SessionLocal
 from app.models.library import Library
 from app.services.scan_manager import scan_manager
-from app.config import settings
+
+from app.core.settings_loader import get_cached_setting
 
 
 class LibraryEventHandler(FileSystemEventHandler):
@@ -49,7 +50,6 @@ class LibraryEventHandler(FileSystemEventHandler):
                 return
             self._timer = None
 
-        print(f"Watcher: Batch window ended for Library {self.library_id}. Queuing scan...")
         self.logger.info(f"Watcher: Batch window ended for Library {self.library_id}. Queuing scan...")
         scan_manager.add_task(self.library_id, force=False)
 
@@ -80,8 +80,10 @@ class LibraryEventHandler(FileSystemEventHandler):
         # If no timer, start one.
         with self._lock:
             if not self._stopped and not self._timer:
-                print(f"Watcher: Change detected in Library {self.library_id} ({event.event_type}: {path.name}). Starting {self.batch_window_seconds}s batch window.")
+
                 self.logger.info(f"Watcher: Change detected in Library {self.library_id} ({event.event_type}: {path.name}). Starting {self.batch_window_seconds}s batch window.")
+
+                # Start timer
                 self._timer = threading.Timer(self.batch_window_seconds, self._trigger_scan)
                 self._timer.start()
 
@@ -111,7 +113,6 @@ class LibraryWatcher:
             self.refresh_watches()
             self.observer.start()
             self.is_running = True
-            print("Library Watcher Started")
             self.logger.info("Library Watcher Started")
 
     def stop(self):
@@ -131,19 +132,22 @@ class LibraryWatcher:
             active_ids = {lib.id for lib in libraries}
             current_ids = set(self.watches.keys())
 
+            # Fetch Dynamic Setting (Default 600s if missing)
+            # We fetch it once per refresh so all new watches use the updated value.
+            # (Existing watches won't update their timeout until they are restarted, which is fine)
+            batch_window = get_cached_setting("scanning.batch_window", 600)
+
             # 2. Add new watches
             for lib in libraries:
                 if lib.id not in self.watches:
                     try:
-                        print(f"Starting watch for: {lib.path}")
                         self.logger.info(f"Starting watch for: {lib.path}")
-                        handler = LibraryEventHandler(lib.id, settings.batch_window_seconds)
+                        handler = LibraryEventHandler(lib.id, int(batch_window))
                         watch = self.observer.schedule(handler, lib.path, recursive=True)
 
                         # Store both so we can cancel the handler later
                         self.watches[lib.id] = (watch, handler)
                     except Exception as e:
-                        print(f"Failed to watch {lib.path}: {e}")
                         self.logger.error(f"Failed to watch {lib.path}: {e}")
 
             # 3. Remove old watches (if disabled in DB)

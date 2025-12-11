@@ -19,7 +19,7 @@ class SettingsService:
             "label": "Application Name"
         },
         {
-            "key": "scanning.batch_window", "value": "300",
+            "key": "scanning.batch_window", "value": "600",
             "category": "scanning", "data_type": "int",
             "label": "Scan Batch Window (Sec)",
             "description": "Time to wait for file operations to settle."

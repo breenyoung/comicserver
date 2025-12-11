@@ -8,10 +8,10 @@ Parker is a self‑hosted comic book server for CBZ/CBR archives. It’s designe
 
 1. **Clone the repo**
    ```bash
-   git clone https://github.com/yourusername/parker.git
+   git clone https://github.com/parker-server/parker.git
    cd parker
    
-2. ```docker-compose up -d```
+2. ```docker-compose up -d --build``
 3. Access Parker at http://localhost:8000.
 
 ## ✨ What You Get

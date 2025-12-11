@@ -41,7 +41,7 @@ class SettingsService:
             "category": "appearance",
             "data_type": "select",
             "label": "Pagination Style",
-            "description": "How lists of issues are loaded.",
+            "description": "How lists of series / issues are loaded.",
             "options": [
                 {"label": "Infinite Scroll (Load on scroll)", "value": "infinite"},
                 {"label": "Classic (Page numbers)", "value": "classic"}

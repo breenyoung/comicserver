@@ -81,7 +81,7 @@ class LibraryEventHandler(FileSystemEventHandler):
         with self._lock:
             if not self._stopped and not self._timer:
 
-                self.logger.info(f"Watcher: Change detected in Library {self.library_id} ({event.event_type}: {path.name}). Starting {self.batch_window_seconds}s batch window.")
+                self.logger.debug(f"Watcher: Change detected in Library {self.library_id} ({event.event_type}: {path.name}). Starting {self.batch_window_seconds}s batch window.")
 
                 # Start timer
                 self._timer = threading.Timer(self.batch_window_seconds, self._trigger_scan)

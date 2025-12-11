@@ -66,7 +66,7 @@ class LibraryScanner:
 
         # 1. OPTIMIZATION: Pre-fetch all existing comics for this library.
         # This avoids executing a SELECT query for every single file in the loop.
-        self.logger.info("Pre-fetching existing file list...")
+        self.logger.debug("Pre-fetching existing file list...")
         db_comics = self.db.query(Comic).join(Volume).join(Series).filter(
             Series.library_id == self.library.id
         ).all()
@@ -130,7 +130,7 @@ class LibraryScanner:
                     # 2. OPTIMIZATION: Batch Commit
                     # Only hit the disk once every BATCH_SIZE items
                     if pending_changes >= BATCH_SIZE:
-                        self.logger.info(f"Committing batch of {pending_changes} items...")
+                        self.logger.debug(f"Committing batch of {pending_changes} items...")
                         self.db.commit()
                         pending_changes = 0
 
@@ -145,7 +145,7 @@ class LibraryScanner:
 
         # Commit any remaining items
         if pending_changes > 0:
-            self.logger.info(f"Committing final batch of {pending_changes} items...")
+            self.logger.debug(f"Committing final batch of {pending_changes} items...")
             self.db.commit()
 
         # Find and remove comics whose files no longer exist
@@ -312,7 +312,7 @@ class LibraryScanner:
         # Note: SQLAlchemy tracks dirty state, so this will trigger an UPDATE on commit
 
 
-        self.logger.info(f"Imported: {series_name} #{metadata.get('number', '?')} - {file_path.name}")
+        self.logger.debug(f"Imported: {series_name} #{metadata.get('number', '?')} - {file_path.name}")
 
         return comic
 

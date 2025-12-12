@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, aliased
+from sqlalchemy import func, select, and_
 
 from app.api.deps import SessionDep, CurrentUser
 from app.core.comic_helpers import get_aggregated_metadata
@@ -14,51 +15,59 @@ router = APIRouter()
 
 @router.get("/", name="list")
 async def list_reading_lists(db: SessionDep, current_user: CurrentUser):
-    """List reading lists, hiding ones that are empty due to permissions."""
+    """
+    List reading lists.
+    OPTIMIZED: Uses a SQL subquery to count visible items instead of fetching all rows.
+    """
 
-    # Determine Permissions
-    allowed_ids = set()
+    # 1. Prepare Security Filter
     is_superuser = current_user.is_superuser
+    allowed_ids = []
     if not is_superuser:
-        allowed_ids = {lib.id for lib in current_user.accessible_libraries}
+        allowed_ids = [lib.id for lib in current_user.accessible_libraries]
 
-    # Fetch Lists with eager loading
-    reading_lists = db.query(ReadingList).options(
-        joinedload(ReadingList.items).joinedload(ReadingListItem.comic).joinedload(Comic.volume).joinedload(
-            Volume.series)
-    ).order_by(ReadingList.name).all()
+    # 2. Build Correlated Subquery for Count
+    # "Select count(items) where item.list_id = outer.id AND item is accessible"
 
+    # We alias ReadingListItem to avoid confusion with the outer query
+    item_alias = aliased(ReadingListItem)
 
-    result = []
-    for rl in reading_lists:
+    count_stmt = select(func.count(item_alias.id)) \
+        .join(Comic, item_alias.comic_id == Comic.id) \
+        .join(Volume, Comic.volume_id == Volume.id) \
+        .join(Series, Volume.series_id == Series.id) \
+        .where(item_alias.reading_list_id == ReadingList.id)
 
-        # Calculate "Visible Count"
-        visible_count = 0
-        if is_superuser:
-            visible_count = len(rl.items)
-        else:
-            visible_count = sum(
-                1 for item in rl.items
-                if item.comic and item.comic.volume.series.library_id in allowed_ids
-            )
+    # Apply RLS to the count
+    if not is_superuser:
+        count_stmt = count_stmt.where(Series.library_id.in_(allowed_ids))
 
-        # Hide if empty
-        if visible_count == 0:
-            continue
+    # scalar_subquery() lets us use this as a column in the main query
+    visible_count_col = count_stmt.scalar_subquery()
 
-        result.append({
+    # 3. Main Query: Fetch List + Calculated Count
+    # Filter where visible_count > 0 (Hide empty lists)
+    results = db.query(ReadingList, visible_count_col.label("v_count")) \
+        .filter(visible_count_col > 0) \
+        .order_by(ReadingList.name) \
+        .all()
+
+    # 4. Format Results
+    response = []
+    for rl, v_count in results:
+        response.append({
             "id": rl.id,
             "name": rl.name,
             "description": rl.description,
             "auto_generated": bool(rl.auto_generated),
-            "comic_count": len(rl.items),
+            "comic_count": v_count,  # Use the SQL calculated count
             "created_at": rl.created_at,
             "updated_at": rl.updated_at
         })
 
     return {
-        "total": len(result),
-        "reading_lists": result
+        "total": len(response),
+        "reading_lists": response
     }
 
 
@@ -76,8 +85,7 @@ async def get_reading_list(list_id: int, db: SessionDep, current_user: CurrentUs
         allowed_ids = [lib.id for lib in current_user.accessible_libraries]
 
     # 1. Get comics (Ordered by Position) (Scoped)
-    # We join Comic to ensure we can access fields efficiently
-    # We must join Series to filter by library
+    # Eager load relationships to prevent N+1
     query = db.query(ReadingListItem).join(Comic).join(Volume).join(Series) \
         .options(joinedload(ReadingListItem.comic).joinedload(Comic.volume).joinedload(Volume.series)) \
         .filter(ReadingListItem.reading_list_id == list_id)
@@ -105,16 +113,22 @@ async def get_reading_list(list_id: int, db: SessionDep, current_user: CurrentUs
             "thumbnail_path": f"/api/comics/{comic.id}/thumbnail"
         })
 
+    # (Empty lists are valid in some UIs, but keeping 404 behavior)
     if len(comics) <= 0:
-        raise HTTPException(status_code=404, detail="No comics found")
+        raise HTTPException(status_code=404, detail="No comics found (or access denied)")
 
     # 2. Aggregated Metadata (scoped)
     details = {
-        "writers": get_aggregated_metadata(db, Person, ReadingListItem, ReadingListItem.reading_list_id, list_id,'writer', allowed_library_ids=allowed_ids),
-        "pencillers": get_aggregated_metadata(db, Person, ReadingListItem, ReadingListItem.reading_list_id, list_id,'penciller', allowed_library_ids=allowed_ids),
-        "characters": get_aggregated_metadata(db, Character, ReadingListItem, ReadingListItem.reading_list_id, list_id, allowed_library_ids=allowed_ids),
-        "teams": get_aggregated_metadata(db, Team, ReadingListItem, ReadingListItem.reading_list_id, list_id, allowed_library_ids=allowed_ids),
-        "locations": get_aggregated_metadata(db, Location, ReadingListItem, ReadingListItem.reading_list_id, list_id, allowed_library_ids=allowed_ids)
+        "writers": get_aggregated_metadata(db, Person, ReadingListItem, ReadingListItem.reading_list_id, list_id,
+                                           'writer', allowed_library_ids=allowed_ids),
+        "pencillers": get_aggregated_metadata(db, Person, ReadingListItem, ReadingListItem.reading_list_id, list_id,
+                                              'penciller', allowed_library_ids=allowed_ids),
+        "characters": get_aggregated_metadata(db, Character, ReadingListItem, ReadingListItem.reading_list_id, list_id,
+                                              allowed_library_ids=allowed_ids),
+        "teams": get_aggregated_metadata(db, Team, ReadingListItem, ReadingListItem.reading_list_id, list_id,
+                                         allowed_library_ids=allowed_ids),
+        "locations": get_aggregated_metadata(db, Location, ReadingListItem, ReadingListItem.reading_list_id, list_id,
+                                             allowed_library_ids=allowed_ids)
     }
 
     return {
@@ -129,14 +143,12 @@ async def get_reading_list(list_id: int, db: SessionDep, current_user: CurrentUs
         "details": details
     }
 
+
 @router.delete("/{list_id}", name="delete")
 async def delete_reading_list(list_id: int, db: SessionDep, current_user: CurrentUser):
     """Delete a reading list"""
     reading_list = db.query(ReadingList).filter(ReadingList.id == list_id).first()
-
-    if not reading_list:
-        raise HTTPException(status_code=404, detail="Reading list not found")
-
+    if not reading_list: raise HTTPException(status_code=404, detail="Reading list not found")
     db.delete(reading_list)
     db.commit()
 

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List, Optional
 from pydantic import BaseModel
@@ -8,7 +8,8 @@ from app.core.comic_helpers import get_aggregated_metadata
 from app.api.deps import SessionDep, CurrentUser
 from app.models.pull_list import PullList, PullListItem
 from app.models.comic import Comic
-from app.models.series import Series  # Useful for joins if optimizing
+from app.models.series import Series
+from app.models.comic import Volume
 from app.models.tags import Character, Team, Location
 from app.models.credits import Person, ComicCredit
 
@@ -40,8 +41,14 @@ def create_list(list_data: PullListCreate, db: SessionDep, current_user: Current
 
 @router.get("/{list_id}", name="detail")
 def get_list_details(list_id: int, db: SessionDep, current_user: CurrentUser):
-    """Get list details + items sorted by user preference."""
-    plist = db.query(PullList).filter(
+    """
+    Get list details + items sorted by user preference.
+    OPTIMIZED: Uses joinedload to prevent N+1 queries on items loop.
+    """
+    # 1. Fetch List with Eager Loading of Hierarchy
+    plist = db.query(PullList).options(
+        joinedload(PullList.items).joinedload(PullListItem.comic).joinedload(Comic.volume).joinedload(Volume.series)
+    ).filter(
         PullList.id == list_id,
         PullList.user_id == current_user.id
     ).first()
@@ -49,29 +56,32 @@ def get_list_details(list_id: int, db: SessionDep, current_user: CurrentUser):
     if not plist:
         raise HTTPException(status_code=404, detail="Pull list not found")
 
-    # Build formatted item list
-    # The relationship 'items' is already ordered by sort_order in the model definition
+    # 2. Build formatted item list (In-Memory, efficient now)
     items_data = []
-    for item in plist.items:
-        # Check for broken references (optional safety)
+    # Sort items in Python since we eager loaded them (usually preserve DB order, but explicit sort is safe)
+    sorted_items = sorted(plist.items, key=lambda x: x.sort_order)
+
+    for item in sorted_items:
         if not item.comic: continue
 
         items_data.append({
-            "id": item.comic.id,  # The Comic ID (used for reading)
-            "item_id": item.id,  # The Junction ID
+            "id": item.comic.id,
+            "item_id": item.id,
             "title": item.comic.title,
+            # These accesses are now safe/cached
             "series_name": item.comic.volume.series.name,
             "volume_number": item.comic.volume.volume_number,
             "number": item.comic.number,
             "thumbnail_path": f"/api/comics/{item.comic.id}/thumbnail",
             "sort_order": item.sort_order,
-            "read": False  # You could join ReadingProgress here if desired
+            "read": False  # we could join ReadingProgress here in the future
         })
 
-    # Aggregated Metadata
+    # 3. Aggregated Metadata (5 queries, acceptable for detail view)
     details = {
         "writers": get_aggregated_metadata(db, Person, PullListItem, PullListItem.pull_list_id, list_id, 'writer'),
-        "pencillers": get_aggregated_metadata(db, Person, PullListItem, PullListItem.pull_list_id, list_id,'penciller'),
+        "pencillers": get_aggregated_metadata(db, Person, PullListItem, PullListItem.pull_list_id, list_id,
+                                              'penciller'),
         "characters": get_aggregated_metadata(db, Character, PullListItem, PullListItem.pull_list_id, list_id),
         "teams": get_aggregated_metadata(db, Team, PullListItem, PullListItem.pull_list_id, list_id),
         "locations": get_aggregated_metadata(db, Location, PullListItem, PullListItem.pull_list_id, list_id)
@@ -120,37 +130,20 @@ def delete_list(list_id: int, db: SessionDep, current_user: CurrentUser):
 
 @router.post("/{list_id}/items", name="add_item")
 def add_item_to_list(list_id: int, item_data: AddComicRequest, db: SessionDep, current_user: CurrentUser):
-    """Add a comic to the bottom of the list."""
-    # 1. Verify ownership
     plist = db.query(PullList).filter(PullList.id == list_id, PullList.user_id == current_user.id).first()
-    if not plist:
-        raise HTTPException(status_code=404, detail="Pull list not found")
+    if not plist: raise HTTPException(status_code=404, detail="Pull list not found")
 
-    # 2. Verify Comic Exists
     comic = db.query(Comic).get(item_data.comic_id)
-    if not comic:
-        raise HTTPException(status_code=404, detail="Comic not found")
+    if not comic: raise HTTPException(status_code=404, detail="Comic not found")
 
-    # 3. Check for duplicates
-    existing = db.query(PullListItem).filter(
-        PullListItem.pull_list_id == list_id,
-        PullListItem.comic_id == item_data.comic_id
-    ).first()
+    existing = db.query(PullListItem).filter(PullListItem.pull_list_id == list_id,
+                                             PullListItem.comic_id == item_data.comic_id).first()
+    if existing: raise HTTPException(status_code=400, detail="Comic already in this list")
 
-    if existing:
-        raise HTTPException(status_code=400, detail="Comic already in this list")
-
-    # 4. Calculate Sort Order (Append to end)
-    max_order = db.query(func.max(PullListItem.sort_order)) \
-        .filter(PullListItem.pull_list_id == list_id).scalar()
-
+    max_order = db.query(func.max(PullListItem.sort_order)).filter(PullListItem.pull_list_id == list_id).scalar()
     new_order = (max_order if max_order is not None else -1) + 1
 
-    new_item = PullListItem(
-        pull_list_id=list_id,
-        comic_id=item_data.comic_id,
-        sort_order=new_order
-    )
+    new_item = PullListItem(pull_list_id=list_id, comic_id=item_data.comic_id, sort_order=new_order)
     db.add(new_item)
     db.commit()
 
@@ -159,19 +152,12 @@ def add_item_to_list(list_id: int, item_data: AddComicRequest, db: SessionDep, c
 
 @router.delete("/{list_id}/items/{comic_id}", name="remove_item")
 def remove_item_from_list(list_id: int, comic_id: int, db: SessionDep, current_user: CurrentUser):
-    """Remove a specific comic from the list."""
-    # Verify ownership
     plist = db.query(PullList).filter(PullList.id == list_id, PullList.user_id == current_user.id).first()
-    if not plist:
-        raise HTTPException(status_code=404, detail="Pull list not found")
+    if not plist: raise HTTPException(status_code=404, detail="Pull list not found")
 
-    item = db.query(PullListItem).filter(
-        PullListItem.pull_list_id == list_id,
-        PullListItem.comic_id == comic_id
-    ).first()
-
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found in list")
+    item = db.query(PullListItem).filter(PullListItem.pull_list_id == list_id,
+                                         PullListItem.comic_id == comic_id).first()
+    if not item: raise HTTPException(status_code=404, detail="Item not found in list")
 
     db.delete(item)
     db.commit()
@@ -180,22 +166,12 @@ def remove_item_from_list(list_id: int, comic_id: int, db: SessionDep, current_u
 
 @router.post("/{list_id}/reorder", name="reorder_list_items")
 def reorder_list_items(list_id: int, order_data: ReorderRequest, db: SessionDep, current_user: CurrentUser):
-    """
-    Update the sort_order for items based on a provided ordered list of IDs.
-    Used by drag-and-drop UIs.
-    """
     plist = db.query(PullList).filter(PullList.id == list_id, PullList.user_id == current_user.id).first()
-    if not plist:
-        raise HTTPException(status_code=404, detail="Pull list not found")
+    if not plist: raise HTTPException(status_code=404, detail="Pull list not found")
 
-    # Fetch all items efficiently
     items = db.query(PullListItem).filter(PullListItem.pull_list_id == list_id).all()
     item_map = {item.comic_id: item for item in items}
 
-    # Apply new order
-    # Note: We loop through the IDs sent by the client.
-    # If the client omits IDs, their order remains unchanged (or undefined behavior),
-    # so the client should send the FULL list.
     for index, comic_id in enumerate(order_data.comic_ids):
         if comic_id in item_map:
             item_map[comic_id].sort_order = index
@@ -206,44 +182,26 @@ def reorder_list_items(list_id: int, order_data: ReorderRequest, db: SessionDep,
 
 @router.post("/{list_id}/items/batch", name="batch_add_items")
 def batch_add_items_to_list(list_id: int, batch_data: BatchAddComicRequest, db: SessionDep, current_user: CurrentUser):
-    """Batch add multiple comics to the bottom of the list."""
-
-    # 1. Verify ownership
     plist = db.query(PullList).filter(PullList.id == list_id, PullList.user_id == current_user.id).first()
-    if not plist:
-        raise HTTPException(status_code=404, detail="Pull list not found")
+    if not plist: raise HTTPException(status_code=404, detail="Pull list not found")
 
-    if not batch_data.comic_ids:
-        return {"message": "No comics selected"}
+    if not batch_data.comic_ids: return {"message": "No comics selected"}
 
-    # 2. Filter out duplicates (Comics already in this list)
     existing_ids = db.query(PullListItem.comic_id).filter(
         PullListItem.pull_list_id == list_id,
         PullListItem.comic_id.in_(batch_data.comic_ids)
     ).all()
     existing_set = {r[0] for r in existing_ids}
 
-    # Only insert new ones
     new_ids = [cid for cid in batch_data.comic_ids if cid not in existing_set]
+    if not new_ids: return {"message": "All selected comics are already in this list"}
 
-    if not new_ids:
-        return {"message": "All selected comics are already in this list"}
-
-    # 3. Calculate Sort Order
-    # Find current max order
-    max_order = db.query(func.max(PullListItem.sort_order)) \
-        .filter(PullListItem.pull_list_id == list_id).scalar()
-
+    max_order = db.query(func.max(PullListItem.sort_order)).filter(PullListItem.pull_list_id == list_id).scalar()
     current_order = (max_order if max_order is not None else -1) + 1
 
-    # 4. Bulk Insert
     new_items = []
     for cid in new_ids:
-        new_items.append(PullListItem(
-            pull_list_id=list_id,
-            comic_id=cid,
-            sort_order=current_order
-        ))
+        new_items.append(PullListItem(pull_list_id=list_id, comic_id=cid, sort_order=current_order))
         current_order += 1
 
     db.add_all(new_items)

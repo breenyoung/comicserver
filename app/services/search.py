@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_, func, not_, text
 from typing import List, Dict, Any, Union
 from app.models import (Comic, Volume, Series,
@@ -24,7 +24,7 @@ class SearchService:
         # Start with base query joining essential tables
         query = self.db.query(Comic).join(Volume).join(Series)
 
-        # 1. NEW: Apply Library Context Scope
+        # 1. Apply Library Context Scope
         if hasattr(request, 'context_library_id') and request.context_library_id:
             query = query.filter(Series.library_id == request.context_library_id)
 
@@ -56,6 +56,9 @@ class SearchService:
         query = query.offset(request.offset).limit(request.limit)
 
         # Execute and format results
+        # OPTIMIZATION: Eager load relationships to prevent N+1 in _format_comic
+        query = query.options(joinedload(Comic.volume).joinedload(Volume.series))
+
         comics = query.all()
         results = [self._format_comic(comic) for comic in comics]
 
@@ -187,7 +190,7 @@ class SearchService:
         if operator == 'equal':  # Exact match on name
             return Comic.credits.any(and_(ComicCredit.role == role, ComicCredit.person.has(Person.name == values[0])))
 
-        elif operator == 'contains':  # OR Logic: Has "Moore" OR "Morrison"
+        elif operator == 'contains': # OR Logic: Has "Moore" OR "Morrison"
             checks = [person_check(v) for v in values]
             return Comic.credits.any(and_(ComicCredit.role == role, or_(*checks)))
 
@@ -196,7 +199,7 @@ class SearchService:
             checks = [person_check(v) for v in values]
             return ~Comic.credits.any(and_(ComicCredit.role == role, or_(*checks)))
 
-        elif operator == 'must_contain':  # AND Logic: Has "Moore" AND Has "Gibbons"
+        elif operator == 'must_contain': # AND Logic: Has "Moore" AND Has "Gibbons"
             # Requires multiple EXISTS clauses
             conditions = []
             for v in values:
@@ -213,8 +216,8 @@ class SearchService:
         if operator == 'equal':
             return relationship.any(name_column == values[0])
 
-        elif operator == 'contains':  # OR
-            return relationship.any(name_column.in_(values))  # Exact match from list
+        elif operator == 'contains': # OR
+            return relationship.any(name_column.in_(values)) # Exact match from list
             # OR if you want partial match:
             # checks = [name_column.ilike(f"%{v}%") for v in values]
             # return relationship.any(or_(*checks))
@@ -222,7 +225,7 @@ class SearchService:
         elif operator == 'does_not_contain' or operator == 'not_equal':
             return ~relationship.any(name_column.in_(values))
 
-        elif operator == 'must_contain':  # AND
+        elif operator == 'must_contain': # AND
             conditions = [relationship.any(name_column == v) for v in values]
             return and_(*conditions)
 

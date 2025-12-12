@@ -2,10 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional, Annotated
 from datetime import datetime, timezone, timedelta
+from sqlalchemy.orm import joinedload
 
 from app.core.settings_loader import get_cached_setting
 from app.api.deps import SessionDep, CurrentUser
 from app.models.reading_progress import ReadingProgress
+# Need to import these for joinedload to work
+from app.models.comic import Comic, Volume
+from app.models.series import Series
 from app.services.reading_progress import ReadingProgressService
 
 router = APIRouter()
@@ -17,8 +21,8 @@ class UpdateProgressRequest(BaseModel):
 
 # Helper to initialize service with the CORRECT user
 def get_progress_service(
-    db: SessionDep,
-    user: CurrentUser,
+        db: SessionDep,
+        user: CurrentUser,
 ) -> ReadingProgressService:
     return ReadingProgressService(db, user_id=user.id)
 
@@ -31,6 +35,7 @@ async def get_on_deck_progress(
 ):
     """
     Get 'On Deck' items (In Progress), filtering out stale items based on settings.
+    OPTIMIZED: Uses joinedload to prevent N+1 queries for Comic/Series data.
     """
     # Get Setting (Default 4 weeks)
     staleness_weeks = get_cached_setting("ui.on_deck.staleness_weeks", default=4)
@@ -40,11 +45,10 @@ async def get_on_deck_progress(
     if staleness_weeks > 0:
         cutoff_date = datetime.now(timezone.utc) - timedelta(weeks=staleness_weeks)
 
-    # 3. Query via Service (We need to add this method to Service, or do ad-hoc query here)
-    # Since Service abstracts DB, let's do it cleanly via DB directly here for speed
-    # or add a method to Service. Let's do DB here since we have the session.
-
-    query = service.db.query(ReadingProgress).filter(
+    # 3. Query via Service DB directly for optimization
+    query = service.db.query(ReadingProgress).options(
+        joinedload(ReadingProgress.comic).joinedload(Comic.volume).joinedload(Volume.series)
+    ).filter(
         ReadingProgress.user_id == service.user_id,
         ReadingProgress.completed == False,
         ReadingProgress.current_page > 0  # Must have actually started
@@ -189,16 +193,22 @@ async def get_recent_progress(
 ):
     """
     Get reading progress.
-    Read-only operation, so no commits needed.
+    OPTIMIZED: Direct DB queries with eager loading to prevent N+1 loop.
     """
 
+    # We build the query directly to ensure we can attach .options(joinedload...)
+    # This bypasses the basic service methods but is necessary for the List View performance.
+    query = service.db.query(ReadingProgress).options(
+        joinedload(ReadingProgress.comic).joinedload(Comic.volume).joinedload(Volume.series)
+    ).filter(ReadingProgress.user_id == service.user_id)
 
     if filter == "in_progress":
-        progress_list = service.get_in_progress(limit)
+        query = query.filter(ReadingProgress.completed == False, ReadingProgress.current_page > 0)
     elif filter == "completed":
-        progress_list = service.get_completed(limit)
-    else:  # recent
-        progress_list = service.get_recently_read(limit)
+        query = query.filter(ReadingProgress.completed == True)
+    # else: "recent" implies all/any status, just sorted by time
+
+    progress_list = query.order_by(ReadingProgress.last_read_at.desc()).limit(limit).all()
 
     results = []
     for progress in progress_list:

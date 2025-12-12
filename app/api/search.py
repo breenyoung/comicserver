@@ -24,7 +24,6 @@ def _get_allowed_library_ids(user) -> Optional[List[int]]:
 def _apply_library_filter(query: SqlQuery, model, allowed_ids: List[int]) -> SqlQuery:
     """
     Dynamically joins to Series to filter by Library ID.
-    Assumes the query is starting from 'model'.
     """
     if allowed_ids is None:
         return query
@@ -74,9 +73,8 @@ async def get_search_suggestions(
         query: Annotated[str, Query(min_length=1)] = ...,
 ):
     """
-    Autocomplete suggestions for search filters.
-    Scoped to User's Accessible Libraries.
-    e.g. ?field=character&query=Bat -> ["Batman", "Batgirl"]
+    Autocomplete suggestions.
+    OPTIMIZED: Added distinct() to prevent duplicate names from multiple joins.
     """
     q_str = query.lower()
     results = []
@@ -88,6 +86,9 @@ async def get_search_suggestions(
         return _apply_library_filter(base, model, allowed_ids)
 
     # Map fields to their models/columns
+    # OPTIMIZATION: .distinct() ensures we don't get 10 copies of "Batman"
+    # if he is in 10 authorized books.
+
     if field == 'series':
         results = build_query(Series, Series.name).limit(10).all()
 
@@ -99,21 +100,19 @@ async def get_search_suggestions(
         results = build_query(Comic, Comic.publisher).distinct().limit(10).all()
 
     elif field == 'character':
-        results = build_query(Character, Character.name).limit(10).all()
+        results = build_query(Character, Character.name).distinct().limit(10).all()
 
     elif field == 'team':
-        results = build_query(Team, Team.name).limit(10).all()
+        results = build_query(Team, Team.name).distinct().limit(10).all()
 
     elif field in ['writer', 'penciller', 'inker', 'colorist', 'letterer', 'editor', 'cover_artist']:
-        # For people, we check the Person table, but ideally we'd filter by role if we had that link easily available
-        # For speed, just searching Person names is usually fine
-        results = build_query(Person, Person.name).limit(10).all()
+        results = build_query(Person, Person.name).distinct().limit(10).all()
 
     elif field == 'collection':
-        results = build_query(Collection, Collection.name).limit(10).all()
+        results = build_query(Collection, Collection.name).distinct().limit(10).all()
 
     elif field == 'location':
-        results = build_query(Location, Location.name).limit(10).all()
+        results = build_query(Location, Location.name).distinct().limit(10).all()
 
     elif field == 'format':
         # Distinct query on Comic table
@@ -132,14 +131,14 @@ async def get_search_suggestions(
         results = build_query(Comic, Comic.language_iso).distinct().limit(10).all()
 
     elif field == 'reading_list':
-        results = build_query(ReadingList, ReadingList.name).limit(10).all()
+        results = build_query(ReadingList, ReadingList.name).distinct().limit(10).all()
 
     elif field == 'pull_list':
         results = (db.query(PullList.name)
                    .filter(PullList.name.ilike(f"%{q_str}%"), PullList.user_id == current_user.id)
                    .limit(10).all())
 
-    # Flatten list of tuples [('Name',), ...] -> ['Name', ...]
+    # Flatten list of tuples
     return [r[0] for r in results if r[0]]
 
 
@@ -151,10 +150,9 @@ async def quick_search(
 ):
     """
     Multi-model segmented search for Navbar autocomplete.
-    Searches Series, Collections, Lists, People, and Tags.
-    Scoped to User's Accessible Libraries.
+    OPTIMIZED: Added distinct() to get_scoped_results to fix duplicate results.
     """
-    limit = 5  # Tighter limit per category
+    limit = 5
     q_str = f"%{q}%"
     allowed_ids = _get_allowed_library_ids(current_user)
 
@@ -163,7 +161,9 @@ async def quick_search(
     # Helper for quick search queries
     def get_scoped_results(model, name_col):
         base = db.query(model).filter(name_col.ilike(q_str))
-        return _apply_library_filter(base, model, allowed_ids).limit(limit).all()
+        # OPTIMIZATION: distinct() is crucial here because _apply_library_filter
+        # joins to 'comics'. Without distinct, we get one row per comic appearance.
+        return _apply_library_filter(base, model, allowed_ids).distinct().limit(limit).all()
 
     # 1. Series (Scoped to User)
     series_objs = get_scoped_results(Series, Series.name)
@@ -191,10 +191,10 @@ async def quick_search(
     locs_objs = get_scoped_results(Location, Location.name)
     results["locations"] = [{"id": l.id, "name": l.name} for l in locs_objs]
 
-    # 6. Pull Lists (User scoped)
-    pull_list_objs =(db.query(PullList)
-                     .filter(PullList.name.ilike(q_str), PullList.user_id == current_user.id)
-                     .limit(limit).all())
+    # 6. Pull Lists
+    pull_list_objs = (db.query(PullList)
+                      .filter(PullList.name.ilike(q_str), PullList.user_id == current_user.id)
+                      .limit(limit).all())
     results['pull_lists'] = [{"id": p.id, "name": p.name} for p in pull_list_objs]
 
     return results

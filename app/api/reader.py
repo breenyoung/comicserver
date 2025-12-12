@@ -1,19 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response, FileResponse
 from sqlalchemy import func, Float, case
+from sqlalchemy.orm import joinedload
 from typing import List, Annotated, Optional, Literal
 from pathlib import Path
 import re
-
-
 
 from app.core.comic_helpers import get_format_sort_index, get_format_weight
 from app.api.deps import SessionDep, CurrentUser
 from app.models.comic import Comic, Volume
 from app.models.series import Series
 
-from app.schemas.search import SearchRequest, SearchResponse
-from app.services.search import SearchService
 from app.services.images import ImageService
 from app.models.reading_progress import ReadingProgress
 from app.models.pull_list import PullList, PullListItem
@@ -41,17 +38,22 @@ async def get_comic_reader_init(comic_id: int,
                                     "Unique identifier for the given context"
                                 ] = None):
     """
-    Get initialization data for the reader:
-    - Page Count
-    - Previous / Next Comic IDs in the volume
+    Get initialization data for the reader.
+    OPTIMIZED: Uses tuple queries for sibling sorting instead of full object fetches.
     """
-    comic = db.query(Comic).filter(Comic.id == comic_id).first()
+    # 1. Fetch Comic with Series/Volume loaded (Avoids N+1 later)
+    comic = db.query(Comic).options(
+        joinedload(Comic.volume).joinedload(Volume.series)
+    ).filter(Comic.id == comic_id).first()
+
     if not comic:
         raise HTTPException(status_code=404, detail="Comic not found")
 
     # Default: No Context (Standard Volume Browsing)
     prev_id = None
     next_id = None
+    ids = []
+    context_label = ""
 
     # --- STRATEGY PATTERN ---
     if context_type == "pull_list" and context_id:
@@ -91,9 +93,9 @@ async def get_comic_reader_init(comic_id: int,
             .join(Series, Volume.series_id == Series.id) \
             .filter(CollectionItem.collection_id == context_id) \
             .order_by(
-                Comic.year.asc(),  # 1. Chronological groups
-        Series.name.asc(),  # 2. Alphabetical by Title
-                func.cast(Comic.number, Float)  # 3. Numerical order (essential if multiple issues of same series exist)
+            Comic.year.asc(),
+            Series.name.asc(),
+            func.cast(Comic.number, Float)
         ).all()
 
         ids = [i[0] for i in items]
@@ -105,10 +107,9 @@ async def get_comic_reader_init(comic_id: int,
 
         # Use centralized helper
         format_weight = get_format_sort_index()
-
-        # Weighted Sort: Plain (1) -> Annual (2) -> Special (3)
-        # This ensures Annual #1 comes AFTER Issue #500
-        series_comics = db.query(Comic).join(Volume).filter(
+        # Series strategy is already optimized (fetches IDs only via ORM selection)
+        # But let's be explicit to avoid object overhead:
+        items = db.query(Comic.id).join(Volume).filter(
             Volume.series_id == context_id
         ).order_by(
             Volume.volume_number,
@@ -116,31 +117,31 @@ async def get_comic_reader_init(comic_id: int,
             func.cast(Comic.number, Float),
             Comic.number
         ).all()
-
-        ids = [c.id for c in series_comics]
+        ids = [i[0] for i in items]
 
     else:
         # 5. Default / Volume Strategy
+        # OPTIMIZATION: Fetch lightweight Tuples instead of full Comic objects.
+        # This prevents instantiating 900 objects for large series.
 
-        v = db.query(Volume.series_id, Volume.volume_number).filter(Volume.id == comic.volume_id).first()
-        series_name = db.query(Series.name).filter(Series.id == v.series_id).scalar()
-        context_label = f"{series_name} (vol {v.volume_number})"
+        # We access relation data safely via the loaded comic object
+        series_name = comic.volume.series.name
+        vol_num = comic.volume.volume_number
+        context_label = f"{series_name} (vol {vol_num})"
 
-        # Used for context_type="volume" OR fallback
-        # Logic: Sort all siblings in THIS volume by natural number
-        # Note: This fixes your Annuals issue if we sort correctly here
-        # We grab ALL siblings in the volume (Annuals + Plain) sorted by date/number
-        siblings = db.query(Comic).filter(
+        # Query only what we need for the Python sort
+        siblings = db.query(Comic.id, Comic.number, Comic.format).filter(
             Comic.volume_id == comic.volume_id
         ).all()
 
-        # Sort using helper (ensures Annuals slot in correctly if numbered/dated)
+        # Sort using helper on the tuple data
+        # x[0]=id, x[1]=number, x[2]=format
         siblings.sort(key=lambda x: (
-            get_format_weight(x.format),  # Uses helper
-            natural_sort_key(x.number)
+            get_format_weight(x[2]),
+            natural_sort_key(x[1])
         ))
 
-        ids = [c.id for c in siblings]
+        ids = [x[0] for x in siblings]
 
     # --- CALCULATE NEIGHBORS ---
     try:
@@ -187,8 +188,8 @@ async def get_comic_reader_init(comic_id: int,
         "context_total": len(ids) if ids else 0,
         "context_type": context_type,
         "context_label": context_label
-
     }
+
 
 @router.get("/{comic_id}/page/{page_index}", name="comic_page")
 def get_comic_page(
@@ -200,24 +201,18 @@ def get_comic_page(
         webp: Annotated[bool, Query()] = False
 ):
     """
-    Get a specific page image from a comic.  Supports server-side sharpening and grayscale.
-
-    Args:
-        comic_id: ID of the comic
-        page_index: Zero-based page index (0 = first page/cover)
-        db: Database session
-        sharpen: If true, sharpen the image
-        grayscale: If true, convert the image to grayscale
-        webp: If true, convert the image to webp
+    Get a specific page image.
+    OPTIMIZED: Fetches only the file_path string, not the full Comic object.
     """
-    comic = db.query(Comic).filter(Comic.id == comic_id).first()
+    # 1. Fetch Path Only (Scalar Query = <1ms)
+    file_path = db.query(Comic.file_path).filter(Comic.id == comic_id).scalar()
 
-    if not comic:
+    if not file_path:
         raise HTTPException(status_code=404, detail="Comic not found")
 
     image_service = ImageService()
     image_bytes, is_correct_format, mime_type = image_service.get_page_image(
-        str(comic.file_path),
+        str(file_path),
         page_index,
         sharpen=sharpen,
         grayscale=grayscale,

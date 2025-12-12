@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import Float, func
+from sqlalchemy.orm import Session, joinedload, aliased
+from sqlalchemy import Float, func, select, and_
 from typing import List, Annotated
 
 from app.core.comic_helpers import get_aggregated_metadata
@@ -17,62 +17,60 @@ router = APIRouter()
 
 @router.get("/", name="list")
 async def list_collections(current_user: CurrentUser, db: SessionDep):
-    """List collections, hiding ones that are empty due to permissions."""
+    """
+    List collections.
+    OPTIMIZED: Uses SQL subquery to count visible items instead of fetching all rows.
+    """
 
-    # Determine Permissions
-    allowed_ids = set()
+    # 1. Prepare Security Filter
     is_superuser = current_user.is_superuser
+    allowed_ids = []
     if not is_superuser:
-        allowed_ids = {lib.id for lib in current_user.accessible_libraries}
+        allowed_ids = [lib.id for lib in current_user.accessible_libraries]
 
-    # Fetch Collections with eager loading to avoid N+1 during filtering
-    # We need the path: Collection -> Items -> Comic -> Volume -> Series (to get library_id)
-    collections = db.query(Collection).options(
-        joinedload(Collection.items).joinedload(CollectionItem.comic).joinedload(Comic.volume).joinedload(
-            Volume.series)
-    ).order_by(Collection.name).all()
+    # 2. Build Correlated Subquery for Count
+    item_alias = aliased(CollectionItem)
 
-    result = []
-    for col in collections:
+    count_stmt = select(func.count(item_alias.id)) \
+        .join(Comic, item_alias.comic_id == Comic.id) \
+        .join(Volume, Comic.volume_id == Volume.id) \
+        .join(Series, Volume.series_id == Series.id) \
+        .where(item_alias.collection_id == Collection.id)
 
-        # Calculate "Visible Count"
-        # If superuser, everything is visible.
-        # If user, only items where series.library_id is in allowed_ids.
+    if not is_superuser:
+        count_stmt = count_stmt.where(Series.library_id.in_(allowed_ids))
 
-        visible_count = 0
-        if is_superuser:
-            visible_count = len(col.items)
-        else:
-            # Filter in Python (fast enough for collections list)
-            visible_count = sum(
-                1 for item in col.items
-                if item.comic and item.comic.volume.series.library_id in allowed_ids
-            )
+    visible_count_col = count_stmt.scalar_subquery()
 
-        # Hide if empty
-        if visible_count == 0:
-            continue
+    # 3. Execute
+    results = db.query(Collection, visible_count_col.label("v_count")) \
+        .filter(visible_count_col > 0) \
+        .order_by(Collection.name) \
+        .all()
 
-        result.append({
+    # 4. Format
+    response = []
+    for col, v_count in results:
+        response.append({
             "id": col.id,
             "name": col.name,
             "description": col.description,
             "auto_generated": bool(col.auto_generated),
-            "comic_count": len(col.items),
+            "comic_count": v_count,
             "created_at": col.created_at,
             "updated_at": col.updated_at
         })
 
     return {
-        "total": len(result),
-        "collections": result
+        "total": len(response),
+        "collections": response
     }
 
 
 @router.get("/{collection_id}", name="detail")
 async def get_collection(current_user: CurrentUser,
                          collection_id: int, db: SessionDep):
-    """Get a specific collection with all comics and aggregated details"""
+    """Get a specific collection with all comics"""
     collection = db.query(Collection).filter(Collection.id == collection_id).first()
 
     if not collection:
@@ -122,11 +120,16 @@ async def get_collection(current_user: CurrentUser,
     # 2. Aggregated Metadata (Scoped)
     # Pass allowed_ids to the helper
     details = {
-        "writers": get_aggregated_metadata(db, Person, CollectionItem, CollectionItem.collection_id, collection_id,'writer', allowed_library_ids=allowed_ids),
-        "pencillers": get_aggregated_metadata(db, Person, CollectionItem, CollectionItem.collection_id, collection_id, 'penciller', allowed_library_ids=allowed_ids),
-        "characters": get_aggregated_metadata(db, Character, CollectionItem, CollectionItem.collection_id, collection_id, allowed_library_ids=allowed_ids),
-        "teams": get_aggregated_metadata(db, Team, CollectionItem, CollectionItem.collection_id, collection_id, allowed_library_ids=allowed_ids),
-        "locations": get_aggregated_metadata(db, Location, CollectionItem, CollectionItem.collection_id, collection_id, allowed_library_ids=allowed_ids)
+        "writers": get_aggregated_metadata(db, Person, CollectionItem, CollectionItem.collection_id, collection_id,
+                                           'writer', allowed_library_ids=allowed_ids),
+        "pencillers": get_aggregated_metadata(db, Person, CollectionItem, CollectionItem.collection_id, collection_id,
+                                              'penciller', allowed_library_ids=allowed_ids),
+        "characters": get_aggregated_metadata(db, Character, CollectionItem, CollectionItem.collection_id,
+                                              collection_id, allowed_library_ids=allowed_ids),
+        "teams": get_aggregated_metadata(db, Team, CollectionItem, CollectionItem.collection_id, collection_id,
+                                         allowed_library_ids=allowed_ids),
+        "locations": get_aggregated_metadata(db, Location, CollectionItem, CollectionItem.collection_id, collection_id,
+                                             allowed_library_ids=allowed_ids)
     }
 
     return {
@@ -143,14 +146,9 @@ async def get_collection(current_user: CurrentUser,
 
 
 @router.delete("/{collection_id}", name="delete")
-async def delete_collection(current_user: CurrentUser,
-                            collection_id: int, db: SessionDep):
-    """Delete a collection"""
+async def delete_collection(current_user: CurrentUser, collection_id: int, db: SessionDep):
     collection = db.query(Collection).filter(Collection.id == collection_id).first()
-
-    if not collection:
-        raise HTTPException(status_code=404, detail="Collection not found")
-
+    if not collection: raise HTTPException(status_code=404, detail="Collection not found")
     db.delete(collection)
     db.commit()
 

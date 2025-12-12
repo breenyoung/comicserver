@@ -92,6 +92,21 @@
         </div>
     </div>
 
+    <div x-show="!loading.popular && popularSeries.length > 0">
+        <div class="flex items-center justify-between mb-4 border-b border-gray-700 pb-2">
+            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                <span>🔥</span> Trending
+            </h2>
+        </div>
+
+        <div class="flex space-x-4 overflow-x-auto pb-6 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+            <template x-for="series in popularSeries" :key="series.id">
+                    {% include "partials/series_card.html" %}
+            </template>
+        </div>
+    </div>
+
+
     <div x-show="!loading.random && randomSeries.length > 0">
         <div class="flex items-center justify-between mb-4 border-b border-gray-700 pb-2">
             <h2 class="text-xl font-bold text-white flex items-center gap-2">
@@ -155,6 +170,7 @@ function homePage() {
         topRatedComics: [],
         resumeComics: [],
         smartLists: [],
+        popularSeries: [],
 
         loading: {
             recent: true,
@@ -163,7 +179,8 @@ function homePage() {
             onDeck: true,
             random: true,
             topRated: true,
-            resume: true
+            resume: true,
+            popular: true,
         },
 
         get isLoading() {
@@ -183,6 +200,7 @@ function homePage() {
             this.fetchRandom();
             this.fetchTopRated();
             this.fetchSmartLists();
+            this.fetchPopular();
         },
 
         async fetchStarred() {
@@ -264,7 +282,15 @@ function homePage() {
                     this.smartLists = allLists.filter(l => l.show_on_dashboard);
                 }
             } catch (e) { console.error(e); }
-        }
+        },
+
+        async fetchPopular() {
+            try {
+                const res = await fetch(window.parker.route('home.popular', {}, 'limit=12'));
+                if (res.ok) this.popularSeries = await res.json();
+            } catch(e) { console.error(e); }
+            finally { this.loading.popular = false; }
+        },
 
     }
 }

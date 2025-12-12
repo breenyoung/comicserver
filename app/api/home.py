@@ -10,6 +10,7 @@ from app.api.deps import SessionDep, CurrentUser
 from app.core.comic_helpers import get_smart_cover
 from app.models.comic import Comic, Volume
 from app.models.series import Series
+from app.models.user import User
 from app.models.reading_progress import ReadingProgress
 from app.schemas.search import ComicSearchItem
 
@@ -218,3 +219,61 @@ def get_up_next(
 
     return results
 
+@router.get("/popular", response_model=List[dict], name="popular")
+def get_popular(
+        db: SessionDep,
+        current_user: CurrentUser,
+        limit: int = 10
+):
+    """
+    Get 'Trending' Series based on other users' reading activity.
+    Respects the 'share_progress_enabled' privacy setting.
+    """
+    # 1. Aggregation Query
+    # Find Series with the most DISTINCT users reading them (excluding me)
+    # Only count users who have opted-in to sharing
+    popular_series = (
+        db.query(Series)
+        .join(Volume).join(Comic).join(ReadingProgress)
+        .join(User)
+        .filter(User.share_progress_enabled == True)
+        .filter(ReadingProgress.user_id != current_user.id)  # Don't just show me my own stuff
+        .group_by(Series.id)
+        .order_by(func.count(ReadingProgress.user_id.distinct()).desc())
+        .limit(limit)
+        .all()
+    )
+
+    # --- GUARD: Minimum Threshold ---
+    # Don't show the rail if we have fewer than 4 items.
+    # This prevents a poor quality rail with just 1 or 2 items.
+    if len(popular_series) < 4:
+        return []
+
+    # 2. Format Results (Match get_random_gems format for Series Cards)
+    results = []
+    for s in popular_series:
+
+        # Reuse smart cover logic
+        base_query = db.query(Comic).join(Volume).filter(Volume.series_id == s.id)
+        first_issue = get_smart_cover(base_query)
+
+        if not first_issue:
+            continue
+
+        results.append({
+            "id": s.id,
+            "name": s.name,
+            "start_year": first_issue.year,
+            "thumbnail_path": f"/api/comics/{first_issue.id}/thumbnail",
+            "publisher": first_issue.publisher,
+            "volume_count": len(s.volumes) if s.volumes else 0,
+            # We don't calculate 'read' status here as it's a discovery rail
+            "starred": False
+        })
+
+    # Secondary Guard: Ensure we still have enough items after cover validation
+    if len(results) < 4:
+        return []
+
+    return results

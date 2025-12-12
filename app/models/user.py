@@ -20,6 +20,7 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     avatar_path = Column(String, nullable=True)
+    share_progress_enabled = Column(Boolean, default=False)
 
     # Permissions
     is_active = Column(Boolean, default=True)

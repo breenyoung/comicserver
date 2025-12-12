@@ -71,6 +71,13 @@ class UserPasswordUpdateRequest(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8)
 
+class UserPreferencesResponse(BaseModel):
+    user_id: int
+    share_progress_enabled: bool
+
+class UserPreferencesUpdateRequest(BaseModel):
+    share_progress_enabled: Optional[bool] = None
+
 @router.get("/me/dashboard", name="dashboard")
 async def get_user_dashboard(db: SessionDep, current_user: CurrentUser):
     """
@@ -195,6 +202,35 @@ async def get_avatar(user_id: int, db: SessionDep):
         raise HTTPException(status_code=404, detail="Avatar file missing")
 
     return FileResponse(file_path)
+
+@router.get("/me/preferences", name="preferences")
+async def get_preferences(db: SessionDep, current_user: CurrentUser):
+    """Get user preferences"""
+    user = db.query(User).filter(User.id == current_user.id).first()
+
+    # Check if user exists and has an avatar set
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "share_progress_enabled": user.share_progress_enabled,
+    }
+
+@router.patch("/me/preferences", name="update_preferences")
+async def update_preferences(payload: UserPreferencesUpdateRequest, db: SessionDep, current_user: CurrentUser):
+    """Update user preferences"""
+
+    have_settings_changed = False
+
+    if payload.share_progress_enabled is not None:
+        current_user.share_progress_enabled = payload.share_progress_enabled
+        have_settings_changed = True
+
+    if have_settings_changed:
+        db.add(current_user)
+        db.commit()
+
+    return {"status": "success", "message": "Preferences updated"}
 
 @router.put("/me/password", name="update_password")
 async def update_password(

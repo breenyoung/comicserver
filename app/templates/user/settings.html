@@ -10,6 +10,30 @@
         <a :href="window.parker.route('pages.user_dashboard')" class="text-gray-400 hover:text-white transition-colors">← Back to Dashboard</a>
     </div>
 
+    <div class="bg-gray-800 rounded-lg p-8 border border-gray-700 shadow-xl mb-5">
+        <h2 class="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2">Privacy & Social</h2>
+
+        <div class="flex items-start gap-4">
+            <div class="flex items-center h-6">
+                <input
+                    id="share_progress"
+                    type="checkbox"
+                    x-model="preferences.share_progress_enabled"
+                    x-on:change="updatePreferences"
+                    class="w-5 h-5 bg-gray-900 border-gray-600 rounded text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-800"
+                >
+            </div>
+            <div>
+                <label for="share_progress" class="font-medium text-white">Contribute to "Popular with Others"</label>
+                <p class="text-gray-400 text-sm mt-1">
+                    Allow your reading history to be anonymously aggregated to generate the "What others are reading" rail on the homepage.
+                    No one will see exactly what *you* are reading.
+                </p>
+            </div>
+        </div>
+    </div>
+
+
     <div class="bg-gray-800 rounded-lg p-8 border border-gray-700 shadow-xl">
         
         <h2 class="text-xl font-bold text-white mb-6 border-b border-gray-700 pb-2">Change Password</h2>
@@ -79,7 +103,37 @@ function userSettings() {
         loading: false,
         message: '',
         messageColor: 'text-green-400',
+        preferences: {},
 
+        async init() {
+            try {
+                const res = await fetch(window.parker.route('users.preferences'));
+                if(res.ok) {
+                    this.preferences = await res.json();
+                }
+            } catch(e) { console.error("Failed to get user preferences", e); }
+
+        },
+        async updatePreferences() {
+            try {
+                const res = await fetch(window.parker.route('users.update_preferences'), {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        share_progress_enabled: this.preferences.share_progress_enabled
+                    })
+                });
+
+                if(res.ok) {
+                    window.parker.showToast("Settings updated", "success");
+                } else {
+                    window.parker.showToast("Failed to update settings", "error");
+                    this.revertValuesOnFail();
+                }
+            } catch(e) {
+                console.error(e);
+            }
+        },
         async changePassword() {
             this.message = '';
             
@@ -118,7 +172,12 @@ function userSettings() {
             } finally {
                 this.loading = false;
             }
-        }
+        },
+        revertValuesOnFail()
+        {
+            // Revert toggle if failed
+            this.preferences.share_progress_enabled = !this.preferences.share_progress_enabled;
+        },
     }
 }
 </script>

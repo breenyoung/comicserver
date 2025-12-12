@@ -60,7 +60,7 @@ class LibraryScanner:
         BATCH_SIZE = 50
         pending_changes = 0
 
-        self.logger.info(f"Scanning {library_path}... (force={force})")
+        self.logger.info(f"Scanning {library_path} (force={force})")
 
         # Start timing
         start_time = time.time()

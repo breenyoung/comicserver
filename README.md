@@ -104,11 +104,31 @@ Parker is a self‑hosted media server for comic books (CBZ/CBR). It follows a *
 
 
 1. Get the docker image (recommended)
+
+Parker publishes two Docker image channels:
+
+- **Stable (recommended):**
+The latest tag is built from versioned releases and is the recommended option for most users.
+
   ```bash
   docker run -d \
     -p 8000:8000 \
     ghcr.io/parker-server/parker:latest
   ```
+ 
+- **Edge**:
+The edge tag is built automatically from every commit to master.
+It includes the newest features and fixes, but may be less stable
+
+  ```bash
+  docker run -d \
+    -p 8000:8000 \
+    ghcr.io/parker-server/parker:edge
+  ```
+
+
+
+
 
 **or**
 

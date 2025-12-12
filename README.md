@@ -102,14 +102,26 @@ Parker is a self‑hosted media server for comic books (CBZ/CBR). It follows a *
 
 ## 🚀 Getting Started
 
+
+1. Get the docker image (recommended)
+  ```bash
+  docker run -d \
+    -p 8000:8000 \
+    ghcr.io/<your-org>/parker:latest
+  ```
+
+**or**
+
 1. Clone the repository:
    ```bash
    git clone https://github.com/parker-server/parker.git
    cd parker
    
 2. ```docker-compose up -d --build```
-3. Access Parker at http://localhost:8000. Default user: admin/admin
-4. Admin tools found at http://localhost:8000/admin
+
+
+- Access Parker at http://localhost:8000. Default user: admin/admin
+- Admin tools found at http://localhost:8000/admin
 
 
 ## 📌 Roadmap

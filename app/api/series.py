@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
-from sqlalchemy import func, case, Float, and_
+from sqlalchemy import func, case, Float, and_, literal
 from sqlalchemy.orm import joinedload, aliased
 from typing import List, Optional, Annotated
 from datetime import datetime, timezone
@@ -33,36 +33,20 @@ def comic_to_simple_dict(comic: Comic):
         "year": comic.year,
         "format": comic.format,
         "filename": comic.filename,
-        "thumbnail_path": f"/api/comics/{comic.id}/thumbnail" # TODO: make relative url (no leading /) and let frontend decide base url
+        "thumbnail_path": f"/api/comics/{comic.id}/thumbnail"
     }
 
 
 def bulk_serialize_series(series_list: List[Series], db, current_user) -> List[dict]:
-    """
-    OPTIMIZED HELPER: Serializes a list of series in batch.
-    Replaces the N+1 'series_to_simple_dict' loop.
-    """
-    if not series_list:
-        return []
-
+    if not series_list: return []
     series_ids = [s.id for s in series_list]
 
-    # 1. Batch Fetch Covers (SQLite Window Function)
-    # Ranks comics by number within each series to find the "first" one.
     subquery = (
         db.query(
-            Comic.id,
-            Comic.year,
-            Comic.publisher,
-            Volume.series_id,
-            func.row_number().over(
-                partition_by=Volume.series_id,
-                order_by=func.cast(Comic.number, Float).asc()
-            ).label("rn")
-        )
-        .join(Volume)
-        .filter(Volume.series_id.in_(series_ids))
-        .subquery()
+            Comic.id, Comic.year, Volume.series_id,
+            func.row_number().over(partition_by=Volume.series_id, order_by=func.cast(Comic.number, Float).asc()).label(
+                "rn")
+        ).join(Volume).filter(Volume.series_id.in_(series_ids)).subquery()
     )
 
     covers = db.query(subquery).filter(subquery.c.rn == 1).all()
@@ -73,42 +57,26 @@ def bulk_serialize_series(series_list: List[Series], db, current_user) -> List[d
     if current_user:
         # Calculate Total Comics vs Read Comics per Series
         stats = (
-            db.query(
-                Volume.series_id,
-                func.count(Comic.id).label('total'),
-                func.count(ReadingProgress.id).label('read_count')
-            )
-            .select_from(Comic)
-            .join(Volume)
-            .outerjoin(
-                ReadingProgress,
-                and_(
-                    ReadingProgress.comic_id == Comic.id,
-                    ReadingProgress.user_id == current_user.id,
-                    ReadingProgress.completed == True
-                )
-            )
-            .filter(Volume.series_id.in_(series_ids))
-            .group_by(Volume.series_id)
-            .all()
+            db.query(Volume.series_id, func.count(Comic.id).label('total'),
+                     func.count(ReadingProgress.id).label('read_count'))
+            .select_from(Comic).join(Volume)
+            .outerjoin(ReadingProgress,
+                       and_(ReadingProgress.comic_id == Comic.id, ReadingProgress.user_id == current_user.id,
+                            ReadingProgress.completed == True))
+            .filter(Volume.series_id.in_(series_ids)).group_by(Volume.series_id).all()
         )
         for row in stats:
-            # Fully read if total > 0 and read >= total
-            is_fully_read = (row.total > 0) and (row.read_count >= row.total)
-            read_status_map[row.series_id] = is_fully_read
+            read_status_map[row.series_id] = (row.total > 0) and (row.read_count >= row.total)
 
     # 3. Stitch it all together
     results = []
     for s in series_list:
         cover = cover_map.get(s.id)
-        is_read = read_status_map.get(s.id, False)
-
         results.append({
-            "id": s.id,
-            "name": s.name,
+            "id": s.id, "name": s.name,
             "start_year": cover.year if cover else None,
             "thumbnail_path": f"/api/comics/{cover.id}/thumbnail" if cover else None,
-            "read": is_read
+            "read": read_status_map.get(s.id, False)
         })
 
     return results
@@ -118,7 +86,9 @@ def bulk_serialize_series(series_list: List[Series], db, current_user) -> List[d
 async def get_series_detail(series: SeriesDep, db: SessionDep, current_user: CurrentUser):
     """
     Get series summary.
-    OPTIMIZED: Replaced loop-based volume stats with batch aggregation.
+    OPTIMIZED:
+    1. Uses UNION ALL to fetch all metadata (Writers, Artists, etc.) in 1 query instead of 5.
+    2. Batch fetches volume stats.
     """
 
     # 1. Get Volumes (sorted by volume_number)
@@ -128,15 +98,8 @@ async def get_series_detail(series: SeriesDep, db: SessionDep, current_user: Cur
     if not volume_ids:
         # (Return empty structure - kept same as original)
         return {
-            "id": series.id,
-            "name": series.name,
-            "library_id": series.library_id,
-            "volume_count": 0,
-            "total_issues": 0,
-            "volumes": [],
-            "collections": [],
-            "reading_lists": [],
-            "details": {}
+            "id": series.id, "name": series.name, "library_id": series.library_id,
+            "volume_count": 0, "total_issues": 0, "volumes": [], "collections": [], "reading_lists": [], "details": {}
         }
 
     # Get centralized filters
@@ -156,13 +119,11 @@ async def get_series_detail(series: SeriesDep, db: SessionDep, current_user: Cur
 
     # Calculate Reading Time
     total_pages = stats.total_pages or 0
-    read_time = get_reading_time(stats.total_pages or 0)
+    read_time = get_reading_time(total_pages)
     is_standalone = (stats.plain_count == 0 and (stats.annual_count > 0 or stats.special_count > 0))
 
-    # Story Arc Aggregation
-    # We fetch enough data to Sort and Group
-    # Note: We use the same sorting logic as the main list to ensure "First" is actually "First"
-    arc_issues = db.query(Comic.id, Comic.story_arc, Comic.number, Volume.volume_number) \
+    # 3. Story Arcs
+    arc_issues = db.query(Comic.id, Comic.story_arc, Comic.number) \
         .join(Volume) \
         .filter(Comic.volume_id.in_(volume_ids)) \
         .filter(Comic.story_arc != None, Comic.story_arc != "") \
@@ -174,32 +135,53 @@ async def get_series_detail(series: SeriesDep, db: SessionDep, current_user: Cur
     story_arcs_map = {}
 
     for row in arc_issues:
-        name = row.story_arc
-        if name not in story_arcs_map:
-            story_arcs_map[name] = {"name": name, "first_issue_id": row.id, "count": 0}
-        story_arcs_map[name]["count"] += 1
-
-    # Convert to list and sort alphabetically by Arc Name
+        if row.story_arc not in story_arcs_map:
+            story_arcs_map[row.story_arc] = {"name": row.story_arc, "first_issue_id": row.id, "count": 0}
+        story_arcs_map[row.story_arc]["count"] += 1
     story_arcs_data = sorted(story_arcs_map.values(), key=lambda x: x['name'])
 
-    # 3. Related Content & Metadata (Collections, Reading Lists, Credits)
+    # 4. Related Content (Lightweight)
     related_collections = db.query(Collection).join(CollectionItem).join(Comic).filter(
         Comic.volume_id.in_(volume_ids)).distinct().all()
     related_reading_lists = db.query(ReadingList).join(ReadingListItem).join(Comic).filter(
         Comic.volume_id.in_(volume_ids)).distinct().all()
 
-    # 5. Metadata Details
-    writers = db.query(Person.name).join(ComicCredit).join(Comic).filter(Comic.volume_id.in_(volume_ids)).filter(
-        ComicCredit.role == 'writer').distinct().all()
-    pencillers = db.query(Person.name).join(ComicCredit).join(Comic).filter(Comic.volume_id.in_(volume_ids)).filter(
-        ComicCredit.role == 'penciller').distinct().all()
-    characters = db.query(Character.name).join(Comic.characters).filter(
-        Comic.volume_id.in_(volume_ids)).distinct().all()
-    teams = db.query(Team.name).join(Comic.teams).filter(Comic.volume_id.in_(volume_ids)).distinct().all()
-    locations = db.query(Location.name).join(Comic.locations).filter(Comic.volume_id.in_(volume_ids)).distinct().all()
+    # 5. Metadata Details (OPTIMIZED: UNION ALL)
+    # Instead of 5 separate heavy joins, we do one pass.
 
-    # 4. SERIES COVER Logic
-    # Priority: Plain issue, not #0, sorted by year/number
+    q_writers = db.query(Person.name.label("name"), literal("writer").label("type")) \
+        .join(ComicCredit).join(Comic).filter(Comic.volume_id.in_(volume_ids)).filter(ComicCredit.role == 'writer')
+
+    q_pencillers = db.query(Person.name.label("name"), literal("penciller").label("type")) \
+        .join(ComicCredit).join(Comic).filter(Comic.volume_id.in_(volume_ids)).filter(ComicCredit.role == 'penciller')
+
+    q_chars = db.query(Character.name.label("name"), literal("character").label("type")) \
+        .join(Comic.characters).filter(Comic.volume_id.in_(volume_ids))
+
+    q_teams = db.query(Team.name.label("name"), literal("team").label("type")) \
+        .join(Comic.teams).filter(Comic.volume_id.in_(volume_ids))
+
+    q_locs = db.query(Location.name.label("name"), literal("location").label("type")) \
+        .join(Comic.locations).filter(Comic.volume_id.in_(volume_ids))
+
+    meta_rows = q_writers.union_all(q_pencillers, q_chars, q_teams, q_locs).distinct().all()
+
+    details = {"writers": [], "pencillers": [], "characters": [], "teams": [], "locations": []}
+    for name, type_tag in meta_rows:
+        if type_tag == "writer":
+            details["writers"].append(name)
+        elif type_tag == "penciller":
+            details["pencillers"].append(name)
+        elif type_tag == "character":
+            details["characters"].append(name)
+        elif type_tag == "team":
+            details["teams"].append(name)
+        elif type_tag == "location":
+            details["locations"].append(name)
+
+    for k in details: details[k].sort()
+
+    # 6. Series Cover & Resume
     base_query = db.query(Comic).filter(Comic.volume_id.in_(volume_ids))
     first_issue = get_smart_cover(base_query)
     colors = first_issue.color_palette or {} if first_issue else {}
@@ -209,10 +191,8 @@ async def get_series_detail(series: SeriesDep, db: SessionDep, current_user: Cur
 
     # Check for last read comic in this series
     last_read = db.query(ReadingProgress).join(Comic).join(Volume) \
-        .filter(Volume.series_id == series.id) \
-        .filter(ReadingProgress.user_id == current_user.id) \
-        .order_by(ReadingProgress.last_read_at.desc()) \
-        .first()
+        .filter(Volume.series_id == series.id, ReadingProgress.user_id == current_user.id) \
+        .order_by(ReadingProgress.last_read_at.desc()).first()
 
     if last_read:
         resume_comic_id = last_read.comic_id
@@ -220,44 +200,24 @@ async def get_series_detail(series: SeriesDep, db: SessionDep, current_user: Cur
     elif first_issue:
         resume_comic_id = first_issue.id
 
-    # 7. OPTIMIZED VOLUMES DATA
-    # Previous: Loop volumes -> 4 queries each.
-    # New: 2 Batch queries grouped by volume_id.
-
-    # A. Volume Counts (Total vs Read)
+    # 7. Volumes Data (Batch Fetch)
     vol_stats = (
-        db.query(
-            Comic.volume_id,
-            func.count(Comic.id).label('total'),
-            func.count(ReadingProgress.id).label('read_count')
-        )
-        .outerjoin(
-            ReadingProgress,
-            and_(
-                ReadingProgress.comic_id == Comic.id,
-                ReadingProgress.user_id == current_user.id,
-                ReadingProgress.completed == True
-            )
-        )
-        .filter(Comic.volume_id.in_(volume_ids))
-        .group_by(Comic.volume_id)
-        .all()
+        db.query(Comic.volume_id, func.count(Comic.id).label('total'),
+                 func.count(ReadingProgress.id).label('read_count'))
+        .outerjoin(ReadingProgress,
+                   and_(ReadingProgress.comic_id == Comic.id, ReadingProgress.user_id == current_user.id,
+                        ReadingProgress.completed == True))
+        .filter(Comic.volume_id.in_(volume_ids)).group_by(Comic.volume_id).all()
     )
     vol_stats_map = {row.volume_id: row for row in vol_stats}
 
     # B. Volume Covers (First Issue per Volume)
     # Using the same Window Function trick
     vol_subquery = (
-        db.query(
-            Comic.id,
-            Comic.volume_id,
-            func.row_number().over(
-                partition_by=Comic.volume_id,
-                order_by=func.cast(Comic.number, Float).asc()
-            ).label("rn")
-        )
-        .filter(Comic.volume_id.in_(volume_ids))
-        .subquery()
+        db.query(Comic.id, Comic.volume_id, func.row_number().over(partition_by=Comic.volume_id,
+                                                                   order_by=func.cast(Comic.number, Float).asc()).label(
+            "rn"))
+        .filter(Comic.volume_id.in_(volume_ids)).subquery()
     )
     vol_covers = db.query(vol_subquery).filter(vol_subquery.c.rn == 1).all()
     vol_cover_map = {row.volume_id: row.id for row in vol_covers}
@@ -267,65 +227,36 @@ async def get_series_detail(series: SeriesDep, db: SessionDep, current_user: Cur
         stat = vol_stats_map.get(vol.id)
         count = stat.total if stat else 0
         read_count = stat.read_count if stat else 0
-
-        is_fully_read = (count > 0) and (read_count >= count)
-
         volumes_data.append({
-            "volume_id": vol.id,
-            "volume_number": vol.volume_number,
-            "first_issue_id": vol_cover_map.get(vol.id),  # O(1) Lookup
-            "issue_count": count,
-            "read": is_fully_read,
+            "volume_id": vol.id, "volume_number": vol.volume_number,
+            "first_issue_id": vol_cover_map.get(vol.id),
+            "issue_count": count, "read": (count > 0 and read_count >= count)
         })
 
     # Starred Check
     is_starred = False
     if current_user:
-        pref = db.query(UserSeries).filter(
-            UserSeries.user_id == current_user.id,
-            UserSeries.series_id == series.id
-        ).first()
-        if pref and pref.is_starred:
-            is_starred = True
+        pref = db.query(UserSeries).filter(UserSeries.user_id == current_user.id,
+                                           UserSeries.series_id == series.id).first()
+        is_starred = pref.is_starred if pref else False
 
     return {
-        "id": series.id,
-        "name": series.name,
-        "library_id": series.library_id,
-        "library_name": series.library.name,
-        "publisher": stats.publisher,
-        "imprint": stats.imprint,
-        "start_year": stats.start_year,
-        "volume_count": len(volumes),
-        "total_issues": stats.plain_count,
-        "annual_count": stats.annual_count,
-        "special_count": stats.special_count,
-        "is_standalone": is_standalone,
-        "total_pages": total_pages,
-        "file_size": stats.total_size or 0,
-        "read_time": read_time,
-        "starred": is_starred,
-        "first_issue_id": first_issue.id if first_issue else None,
+        "id": series.id, "name": series.name, "library_id": series.library_id, "library_name": series.library.name,
+        "publisher": stats.publisher, "imprint": stats.imprint, "start_year": stats.start_year,
+        "volume_count": len(volumes), "total_issues": stats.plain_count,
+        "annual_count": stats.annual_count, "special_count": stats.special_count, "is_standalone": is_standalone,
+        "total_pages": total_pages, "file_size": stats.total_size or 0, "read_time": read_time,
+        "starred": is_starred, "first_issue_id": first_issue.id if first_issue else None,
         "volumes": volumes_data,
         "collections": [{"id": c.id, "name": c.name, "description": c.description} for c in related_collections],
         "reading_lists": [{"id": l.id, "name": l.name, "description": l.description} for l in related_reading_lists],
-        "story_arcs": sorted(story_arcs_data, key=lambda x: x['name']),
-        "details": {
-            "writers": sorted([r[0] for r in writers]),
-            "pencillers": sorted([r[0] for r in pencillers]),
-            "characters": sorted([r[0] for r in characters]),
-            "teams": sorted([r[0] for r in teams]),
-            "locations": sorted([r[0] for r in locations])
-        },
-        "resume_to": {
-            "comic_id": resume_comic_id,
-            "status": read_status
-        },
-        "colors": colors,
-        "is_admin": current_user.is_superuser
+        "story_arcs": story_arcs_data, "details": details,
+        "resume_to": {"comic_id": resume_comic_id, "status": read_status},
+        "colors": colors, "is_admin": current_user.is_superuser
     }
 
 
+# ... (Keep the rest of the file: get_series_issues, list_series, etc.) ...
 @router.get("/{series_id}/issues", response_model=PaginatedResponse, name="issues")
 async def get_series_issues(
         current_user: CurrentUser,
@@ -367,12 +298,7 @@ async def get_series_issues(
     # 1. Volume (Major)
     # 2. Numeric Value (9 before 10)
     # 3. String Value (10a before 10b)
-    sort_keys = [
-        Volume.volume_number,
-        func.cast(Comic.number, Float),
-        Comic.number
-    ]
-
+    sort_keys = [Volume.volume_number, func.cast(Comic.number, Float), Comic.number]
     if sort_order == "desc":
         # Reverse ALL keys to ensure "Vol 2 #10" comes before "Vol 1 #1"
         query = query.order_by(*[k.desc() for k in sort_keys])
@@ -384,46 +310,22 @@ async def get_series_issues(
     total = query.count()
 
     comics = query.offset(params.skip).limit(params.size).all()
-    # Sort by Numeric Value first, then String Value for variants (10a, 10b)
-    # Cast number to Float for correct numeric sorting (1, 2, 10 instead of 1, 10, 2)
-    # Volume number is already int, so it sorts fine.
-    #comics = query.order_by(Volume.volume_number, func.cast(Comic.number, Float), Comic.number) \
-    #    .offset(params.skip) \
-    #    .limit(params.size) \
-    #    .all()
 
-    # Map results
-    # We unpack the tuple (Comic, completed)
     items = []
     for comic, is_completed in comics:
         data = comic_to_simple_dict(comic)
-        # If is_completed is None (no record) or False, it's unread
         data['read'] = True if is_completed else False
         items.append(data)
 
-
-    return {
-        "total": total,
-        "page": params.page,
-        "size": params.size,
-        "items": items
-    }
+    return {"total": total, "page": params.page, "size": params.size, "items": items}
 
 
 @router.get("/", response_model=PaginatedResponse, name="list")
 async def list_series(
-        db: SessionDep,
-        current_user: CurrentUser,
-        params: Annotated[PaginationParams, Depends()],
-        only_starred: bool = False,
-        sort_by: Annotated[str, Query(pattern="^(name|created|updated)$")] = "name",
+        db: SessionDep, current_user: CurrentUser, params: Annotated[PaginationParams, Depends()],
+        only_starred: bool = False, sort_by: Annotated[str, Query(pattern="^(name|created|updated)$")] = "name",
         sort_desc: bool = False
-
 ):
-    """
-    List series.
-    OPTIMIZED: Uses bulk_serialize_series to avoid N+1 on list view.
-    """
     query = db.query(Series)
 
     # 1. Apply Security Filter (unless Superuser)
@@ -435,10 +337,7 @@ async def list_series(
 
     # Filter Starred
     if only_starred:
-        query = query.join(UserSeries).filter(
-            UserSeries.user_id == current_user.id,
-            UserSeries.is_starred == True
-        )
+        query = query.join(UserSeries).filter(UserSeries.user_id == current_user.id, UserSeries.is_starred == True)
 
     # 2. Apply Sorting
     if sort_by == "created":
@@ -446,11 +345,7 @@ async def list_series(
     elif sort_by == "updated":
         sort_col = Series.updated_at
     else:
-        # Smart Sort here too
-        sort_col = case(
-            (Series.name.ilike("The %"), func.substr(Series.name, 5)),
-            else_=Series.name
-        )
+        sort_col = case((Series.name.ilike("The %"), func.substr(Series.name, 5)), else_=Series.name)
 
     if sort_desc:
         query = query.order_by(sort_col.desc())
@@ -464,16 +359,6 @@ async def list_series(
     # USE HELPER instead of loop
     items = bulk_serialize_series(series_list, db, current_user)
 
-    # Note: bulk_serialize_series returns the 'read' status as boolean 'is_fully_read'.
-    # If you specifically wanted 'has_read_any' (partial progress), that logic is slightly different,
-    # but 'is_fully_read' is generally safer for a list view 'checkmark'.
-
-    # Fill in the extra fields list_series needs that bulk_serialize might not have strictly enforced
-    # (Though bulk_serialize handles name/id/thumb/read).
-    # We just need to ensure 'created_at' and 'library_id' are passed if the UI needs them.
-
-    # Re-map to ensure strict schema compliance if necessary, 
-    # but since series_list is in memory, we can merge.
     final_items = []
     for s, item in zip(series_list, items):
         # item is the dict from bulk_serialize
@@ -481,12 +366,7 @@ async def list_series(
         item['library_id'] = s.library_id
         final_items.append(item)
 
-    return {
-        "total": total,
-        "page": params.page,
-        "size": params.size,
-        "items": final_items
-    }
+    return {"total": total, "page": params.page, "size": params.size, "items": final_items}
 
 
 @router.post("/{series_id}/star", name="star")
@@ -540,17 +420,7 @@ async def regenerate_thumbnails(series_id: int, background_tasks: BackgroundTask
 
 
 @router.get("/{series_id}/recommendations", name="recommendations")
-async def get_series_recommendations(
-        series_id: int,
-        db: SessionDep,
-        user: CurrentUser,
-        limit: int = 10
-):
-    """
-    Smart Recommendations Engine.
-    OPTIMIZED: Uses bulk_serialize_series to reduce queries per lane.
-    """
-    # 1. Fetch Source Series & Permissions
+async def get_series_recommendations(series_id: int, db: SessionDep, user: CurrentUser, limit: int = 10):
     source = db.query(Series).filter(Series.id == series_id).first()
     if not source: return []
 
@@ -573,138 +443,61 @@ async def get_series_recommendations(
 
     # --- STRATEGY 1: SERIES GROUP ---
     if sample_comic.series_group:
-        group_matches = (
-            db.query(Series)
-            .join(Volume).join(Comic)
-            .filter(Comic.series_group == sample_comic.series_group)
-            .filter(Series.id != series_id)
-            .filter(Series.id.in_(visible_series_query))
-            .distinct().limit(limit).all()
-        )
-        if len(group_matches) >= 1:
-            lanes.append({
-                "title": f"More in '{sample_comic.series_group}'",
-                "items": bulk_serialize_series(group_matches, db, user)  # <--- BATCHED
-            })
+        group_matches = db.query(Series).join(Volume).join(Comic).filter(
+            Comic.series_group == sample_comic.series_group, Series.id != series_id,
+            Series.id.in_(visible_series_query)).distinct().limit(limit).all()
+        if len(group_matches) >= 1: lanes.append({"title": f"More in '{sample_comic.series_group}'",
+                                                  "items": bulk_serialize_series(group_matches, db, user)})
 
-    # --- STRATEGY 2: TOP WRITERS ---
-    top_writers = (
-        db.query(Person.name)
-        .join(ComicCredit).join(Comic).join(Volume)
-        .filter(Volume.series_id == series_id)
-        .filter(ComicCredit.role == 'writer')
-        .group_by(Person.name).order_by(func.count(Person.id).desc()).limit(3).all()
-    )
-
+    top_writers = db.query(Person.name).join(ComicCredit).join(Comic).join(Volume).filter(Volume.series_id == series_id,
+                                                                                          ComicCredit.role == 'writer').group_by(
+        Person.name).order_by(func.count(Person.id).desc()).limit(3).all()
     for row in top_writers:
         writer_name = row[0]
-
-        writer_matches = (
-            db.query(Series)
-            .join(Volume).join(Comic).join(ComicCredit).join(Person)
-            .filter(Person.name == writer_name)
-            .filter(ComicCredit.role == 'writer')
-            .filter(Series.id != series_id)
-            .filter(Series.id.in_(visible_series_query))
-            .distinct().limit(limit).all()
-        )
-
+        writer_matches = db.query(Series).join(Volume).join(Comic).join(ComicCredit).join(Person).filter(
+            Person.name == writer_name, ComicCredit.role == 'writer', Series.id != series_id,
+            Series.id.in_(visible_series_query)).distinct().limit(limit).all()
         if len(writer_matches) >= 3:
-            lanes.append({
-                "title": f"More by {writer_name}",
-                "items": bulk_serialize_series(writer_matches, db, user)  # <--- BATCHED
-            })
+            lanes.append({"title": f"More by {writer_name}", "items": bulk_serialize_series(writer_matches, db, user)})
             break
 
-    # --- STRATEGY 2b: TOP PENCILLERS ---
-    top_pencillers = (
-        db.query(Person.name)
-        .join(ComicCredit).join(Comic).join(Volume)
-        .filter(Volume.series_id == series_id)
-        .filter(ComicCredit.role == 'penciller')
-        .group_by(Person.name).order_by(func.count(Person.id).desc()).limit(3).all()
-    )
-
+    top_pencillers = db.query(Person.name).join(ComicCredit).join(Comic).join(Volume).filter(
+        Volume.series_id == series_id, ComicCredit.role == 'penciller').group_by(Person.name).order_by(
+        func.count(Person.id).desc()).limit(3).all()
     for row in top_pencillers:
         penciller_name = row[0]
-
-        # Avoid showing "More by Frank Miller (Art)" if we already have "More by Frank Miller"
-        if any(penciller_name in l['title'] for l in lanes):
-            continue
-
-        penciller_matches = (
-            db.query(Series)
-            .join(Volume).join(Comic).join(ComicCredit).join(Person)
-            .filter(Person.name == penciller_name)
-            .filter(ComicCredit.role == 'penciller')
-            .filter(Series.id != series_id)
-            .filter(Series.id.in_(visible_series_query))
-            .distinct().limit(limit).all()
-        )
-
+        if any(penciller_name in l['title'] for l in lanes): continue
+        penciller_matches = db.query(Series).join(Volume).join(Comic).join(ComicCredit).join(Person).filter(
+            Person.name == penciller_name, ComicCredit.role == 'penciller', Series.id != series_id,
+            Series.id.in_(visible_series_query)).distinct().limit(limit).all()
         if len(penciller_matches) >= 3:
-            lanes.append({
-                "title": f"More by {penciller_name} (Art)",
-                "items": bulk_serialize_series(penciller_matches, db, user)  # <--- BATCHED
-            })
+            lanes.append({"title": f"More by {penciller_name} (Art)",
+                          "items": bulk_serialize_series(penciller_matches, db, user)})
             break
 
-    # --- STRATEGY 3: GENRE ---
-    top_genre = (
-        db.query(Genre.name)
-        .join(comic_genres).join(Comic).join(Volume)
-        .filter(Volume.series_id == series_id)
-        .group_by(Genre.name).order_by(func.count(Comic.id).desc()).first()
-    )
-
+    top_genre = db.query(Genre.name).join(comic_genres).join(Comic).join(Volume).filter(
+        Volume.series_id == series_id).group_by(Genre.name).order_by(func.count(Comic.id).desc()).first()
     if top_genre:
         genre_name = top_genre[0]
-        genre_matches = (
-            db.query(Series)
-            .join(Volume).join(Comic).join(comic_genres).join(Genre)
-            .filter(Genre.name == genre_name)
-            .filter(Series.id != series_id)
-            .filter(Series.id.in_(visible_series_query))
-            .distinct().limit(limit).all()
-        )
-        if len(genre_matches) >= 5:  # Higher threshold for genres as they are broad
-            lanes.append({
-                "title": f"More {genre_name} Comics",
-                "items": bulk_serialize_series(genre_matches, db, user)  # <--- BATCHED
-            })
+        genre_matches = db.query(Series).join(Volume).join(Comic).join(comic_genres).join(Genre).filter(
+            Genre.name == genre_name, Series.id != series_id, Series.id.in_(visible_series_query)).distinct().limit(
+            limit).all()
+        if len(genre_matches) >= 5: lanes.append(
+            {"title": f"More {genre_name} Comics", "items": bulk_serialize_series(genre_matches, db, user)})
 
-    # --- STRATEGY 4: PUBLISHER ---
     if sample_comic.publisher:
-        pub_matches = (
-            db.query(Series)
-            .join(Volume).join(Comic)
-            .filter(Comic.publisher == sample_comic.publisher)
-            .filter(Series.id != series_id)
-            .filter(Series.id.in_(visible_series_query))
-            .distinct().limit(limit).all()
-        )
-        # Only show if we haven't already filled the UI with specific stuff
-        # or if we have a lot of matches
-        if len(pub_matches) >= 5 and len(lanes) < 3:
-            lanes.append({
-                "title": f"More from {sample_comic.publisher}",
-                "items": bulk_serialize_series(pub_matches, db, user)  # <--- BATCHED
-            })
+        pub_matches = db.query(Series).join(Volume).join(Comic).filter(Comic.publisher == sample_comic.publisher,
+                                                                       Series.id != series_id, Series.id.in_(
+                visible_series_query)).distinct().limit(limit).all()
+        if len(pub_matches) >= 5 and len(lanes) < 3: lanes.append(
+            {"title": f"More from {sample_comic.publisher}", "items": bulk_serialize_series(pub_matches, db, user)})
 
-    # --- STRATEGY 5: RECENT IN LIBRARY ---
     if len(lanes) < 2:
-        lib_matches = (
-            db.query(Series)
-            .filter(Series.library_id == source.library_id)
-            .filter(Series.id != series_id)
-            .filter(Series.id.in_(visible_series_query))
-            .order_by(Series.created_at.desc()).limit(limit).all()
-        )
-        if lib_matches:
-            lanes.append({
-                "title": f"New in {source.library.name}",
-                "items": bulk_serialize_series(lib_matches, db, user)  # <--- BATCHED
-            })
+        lib_matches = db.query(Series).filter(Series.library_id == source.library_id, Series.id != series_id,
+                                              Series.id.in_(visible_series_query)).order_by(
+            Series.created_at.desc()).limit(limit).all()
+        if lib_matches: lanes.append(
+            {"title": f"New in {source.library.name}", "items": bulk_serialize_series(lib_matches, db, user)})
 
     return lanes
 

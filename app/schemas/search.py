@@ -50,7 +50,7 @@ class ComicSearchItem(BaseModel):
     id: int
     series: str
     volume: int
-    number: str
+    number: Optional[str] = None
     title: Optional[str] = None
     year: Optional[int] = None
     publisher: Optional[str] = None

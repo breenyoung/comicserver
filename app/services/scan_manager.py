@@ -235,6 +235,7 @@ class ScanManager:
             # Create Thumbnail Job
             self.logger.info(f"Scan complete. Queuing thumbnail generation for Library {library_id}")
 
+
             thumb_job = ScanJob(
                 library_id=library_id,
                 job_type=JobType.THUMBNAIL,

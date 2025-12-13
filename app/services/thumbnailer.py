@@ -12,8 +12,12 @@ from app.models.library import Library
 from app.models.series import Series
 from app.services.images import ImageService
 
-def _apply_batch(db, batch, stats_queue):
 
+def _apply_batch(db, batch, stats_queue):
+    """
+    Apply a batch of updates to the DB.
+    This runs inside the dedicated Writer process.
+    """
     from app.models.comic import Comic
 
     for item in batch:
@@ -24,11 +28,13 @@ def _apply_batch(db, batch, stats_queue):
             stats_queue.put({"comic_id": comic_id, "status": "error"})
             continue
 
+        # Fetch object to update
         comic = db.query(Comic).get(comic_id)
         if not comic:
             stats_queue.put({"comic_id": comic_id, "status": "missing"})
             continue
 
+        # Update fields
         comic.thumbnail_path = item.get("thumbnail_path")
         palette = item.get("palette")
 
@@ -39,16 +45,18 @@ def _apply_batch(db, batch, stats_queue):
 
         stats_queue.put({"comic_id": comic_id, "status": "processed"})
 
+    # Commit the batch (Single Transaction)
     db.commit()
+
 
 def _thumbnail_worker(task: Tuple[int, str]) -> Dict[str, Any]:
     """
-    Pure CPU worker: given (comic_id, file_path), generate thumbnail + palette.
-
-    Returns a small dict that can be sent over a Queue to the writer.
+    Pure CPU worker: generates thumbnail + palette.
+    Does NOT touch the database.
     """
     comic_id, file_path = task
-    from app.services.images import ImageService  # import here to avoid issues after fork
+    # Import here to avoid issues after fork
+    from app.services.images import ImageService
 
     image_service = ImageService()
     target_path = Path(f"./storage/cover/comic_{comic_id}.webp")
@@ -60,49 +68,44 @@ def _thumbnail_worker(task: Tuple[int, str]) -> Dict[str, Any]:
             return {
                 "comic_id": comic_id,
                 "error": True,
-                "message": "Image processing failed",
+                "message": "Image processing failed"
             }
 
-        payload: Dict[str, Any] = {
+        return {
             "comic_id": comic_id,
             "thumbnail_path": str(target_path),
             "palette": result.get("palette"),
             "error": False,
         }
-        return payload
 
     except Exception as e:
         # Keep it small and serializable
         return {
             "comic_id": comic_id,
             "error": True,
-            "message": str(e),
+            "message": str(e)
         }
 
 
-def _thumbnail_writer(queue: Queue, stats_queue: Queue, batch_size: int = 100) -> None:
+def _thumbnail_writer(queue: Queue, stats_queue: Queue, batch_size: int = 25) -> None:
     """
-    Dedicated writer process: reads worker results from `queue`,
-    applies DB updates via a single SQLAlchemy session, and pushes
-    per-item stats to `stats_queue`.
-
-    Terminates when it receives a `None` sentinel.
+    Dedicated writer process: reads worker results and applies DB updates.
+    OPTIMIZED: batch_size lowered to 25 to prevent holding the lock too long.
     """
     from app.database import SessionLocal
-    from app.models.comic import Comic
 
     db = SessionLocal()
     processed = 0
     errors = 0
     skipped = 0
-
     batch = []
 
     try:
         while True:
-
+            # Block until an item is available
             item = queue.get()
 
+            # Sentinel value means "All workers are done"
             if item is None:
                 break
 
@@ -122,14 +125,13 @@ def _thumbnail_writer(queue: Queue, stats_queue: Queue, batch_size: int = 100) -
             errors += sum(1 for i in batch if i.get("error"))
 
     finally:
-        stats_queue.put(
-            {
-                "summary": True,
-                "processed": processed,
-                "errors": errors,
-                "skipped": skipped,
-            }
-        )
+        # Signal completion
+        stats_queue.put({
+            "summary": True,
+            "processed": processed,
+            "errors": errors,
+            "skipped": skipped,
+        })
         db.close()
 
 
@@ -142,7 +144,8 @@ class ThumbnailService:
 
     def process_missing_thumbnails(self, force: bool = False):
         """
-        Find comics in this library without thumbnails and generate them.
+        Serial Mode: Find comics in this library without thumbnails and generate them.
+        OPTIMIZED: Uses batch committing (every 10 items) to prevent DB lock spam.
         """
 
         # GUARD: Ensure we actually have a library ID before running a library-wide scan
@@ -153,8 +156,12 @@ class ThumbnailService:
 
         stats = {"processed": 0, "errors": 0, "skipped": 0}
 
+        # Batch config
+        pending_changes = 0
+        BATCH_SIZE = 10
+
         for comic in comics:
-            # Double check existence (if not forcing)
+            # Check existence
             has_thumb = comic.thumbnail_path and Path(str(comic.thumbnail_path)).exists()
             has_colors = comic.color_primary is not None
 
@@ -179,30 +186,35 @@ class ThumbnailService:
                         comic.color_secondary = palette.get('secondary')
                         comic.color_palette = palette
 
-                    # Commit periodically or per item (Per item is safer for long jobs)
-                    self.db.commit()
                     stats["processed"] += 1
+                    pending_changes += 1
                 else:
                     stats["errors"] += 1
 
             except Exception as e:
-                print(f"Thumbnail error {comic.id}: {e}")
                 self.logger.error(f"Thumbnail error {comic.id}: {e}")
                 stats["errors"] += 1
+
+            # Commit batch
+            if pending_changes >= BATCH_SIZE:
+                self.db.commit()
+                pending_changes = 0
+
+        # Final commit
+        if pending_changes > 0:
+            self.db.commit()
 
         return stats
 
     def process_series_thumbnails(self, series_id: int):
-        """
-        Force regenerate thumbnails for ALL comics in a series.
-        """
-        # Get all comics for this series
+        """Force regenerate thumbnails for ALL comics in a series."""
         comics = self.db.query(Comic).join(Volume).filter(Volume.series_id == series_id).all()
         return self._generate_batch(comics)
 
     def _generate_batch(self, comics: list) -> dict:
-        """Helper to process a list of comics"""
+        """Helper to process a list of comics with batch commits"""
         stats = {"processed": 0, "errors": 0, "skipped": 0}
+        pending_changes = 0
 
         for comic in comics:
             try:
@@ -221,15 +233,21 @@ class ThumbnailService:
                         comic.color_secondary = palette.get('secondary')
                         comic.color_palette = palette
 
-                    self.db.commit()
                     stats["processed"] += 1
+                    pending_changes += 1
                 else:
                     stats["errors"] += 1
 
             except Exception as e:
-                print(f"Thumbnail error {comic.id}: {e}")
                 self.logger.error(f"Thumbnail error {comic.id}: {e}")
                 stats["errors"] += 1
+
+            if pending_changes >= 10:
+                self.db.commit()
+                pending_changes = 0
+
+        if pending_changes > 0:
+            self.db.commit()
 
         return stats
 
@@ -253,18 +271,12 @@ class ThumbnailService:
                 (Comic.thumbnail_path == None) | (Comic.color_primary == None)
             )
 
-        comics = query.all()
-
-        return comics
+        return query.all()
 
     def process_missing_thumbnails_parallel(self, force: bool = False) -> Dict[str, int]:
         """
-        Parallel thumbnail generation using multiprocessing.
-
-        - Worker processes: image processing only (no DB).
-        - Writer process: single SQLAlchemy session, serial DB updates.
-
-        Returns stats dict: {"processed": int, "errors": int, "skipped": int}
+        Parallel thumbnail generation.
+        The writer process handles batching automatically.
         """
         if not self.library_id:
             raise ValueError("Library ID required for library-wide processing")
@@ -290,16 +302,19 @@ class ThumbnailService:
         if not tasks:
             return stats
 
-        # Queues for inter-process communication
+        # Queues
         result_queue: Queue = multiprocessing.Queue()
         stats_queue: Queue = multiprocessing.Queue()
 
+        # Start Writer (Handles DB Updates)
         writer_proc = multiprocessing.Process(
-            target=_thumbnail_writer, args=(result_queue, stats_queue)
+            target=_thumbnail_writer,
+            args=(result_queue, stats_queue),
+            kwargs={'batch_size': 25}  # Safe batch size
         )
         writer_proc.start()
 
-        # Use a Pool for CPU-bound workers
+        # Determine Worker Count
         requested_workers = get_cached_setting("system.parallel_image_workers", 0)
         self.logger.info(f"Requested {'(Auto)' if requested_workers <= 0 else requested_workers} worker(s) for parallel thumbnail generation")
 
@@ -311,6 +326,7 @@ class ThumbnailService:
 
         self.logger.info(f"Using {workers} workers for parallel thumbnail generation")
 
+        # Start Workers (CPU bound)
         with multiprocessing.Pool(processes=workers) as pool:
             for payload in pool.imap_unordered(_thumbnail_worker, tasks):
                 # Send worker result to writer
@@ -319,7 +335,7 @@ class ThumbnailService:
         # All worker tasks done; tell writer to finish
         result_queue.put(None)
 
-        # Collect stats from writer
+        # Wait for stats
         summary_received = False
         while not summary_received:
             item = stats_queue.get()

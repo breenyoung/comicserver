@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+import logging
 
 from app.models.tags import Character, Team, Location
 from app.models.credits import Person
@@ -10,15 +11,17 @@ from app.models.collection import Collection
 from app.services.enrichment import EnrichmentService
 from app.services.images import ImageService
 
+
 class MaintenanceService:
     def __init__(self, db: Session):
         self.db = db
+        self.logger = logging.getLogger(__name__)
         self.enrichment = EnrichmentService()
 
     def cleanup_orphans(self, library_id: int = None) -> dict:
         """
         Delete metadata entities that are no longer associated with any comics.
-        If library_id is provided, scopes Series/Volume cleanup to that library.
+        OPTIMIZED: Commits after each step to yield the DB write lock.
         """
         stats = {
             "series": 0,
@@ -41,75 +44,58 @@ class MaintenanceService:
             series_subquery = self.db.query(Series.id).filter(Series.library_id == library_id)
             vol_query = vol_query.filter(Volume.series_id.in_(series_subquery))
 
-        deleted = vol_query.delete(synchronize_session=False)
+        stats["volumes"] = vol_query.delete(synchronize_session=False)
+        self.db.commit()  # Yield Lock
 
-        stats["volumes"] = deleted
-
-        # 2. Clean Empty Series (No volumes linked)
-        # Note: We do this AFTER cleaning volumes so we catch series that just became empty
+        # 2. Clean Empty Series
         series_query = self.db.query(Series).filter(~Series.volumes.any())
         if library_id:
             series_query = series_query.filter(Series.library_id == library_id)
-        deleted = series_query.delete(synchronize_session=False)
 
-        stats["series"] = deleted
+        stats["series"] = series_query.delete(synchronize_session=False)
+        self.db.commit()  # Yield Lock
 
         # 3. Clean Tags (Characters)
-        # Logic: Delete Character where NOT EXISTS (select 1 from comic_characters where character_id = characters.id)
-        # SQLAlchemy efficient way:
-        deleted = self.db.query(Character).filter(~Character.comics.any()).delete(synchronize_session=False)
-        stats["characters"] = deleted
+        stats["characters"] = self.db.query(Character).filter(~Character.comics.any()).delete(synchronize_session=False)
+        self.db.commit()  # Yield Lock
 
         # 4. Clean Teams
-        deleted = self.db.query(Team).filter(~Team.comics.any()).delete(synchronize_session=False)
-        stats["teams"] = deleted
+        stats["teams"] = self.db.query(Team).filter(~Team.comics.any()).delete(synchronize_session=False)
+        self.db.commit()  # Yield Lock
 
         # 5. Clean Locations
-        deleted = self.db.query(Location).filter(~Location.comics.any()).delete(synchronize_session=False)
-        stats["locations"] = deleted
+        stats["locations"] = self.db.query(Location).filter(~Location.comics.any()).delete(synchronize_session=False)
+        self.db.commit()  # Yield Lock
 
-        # 6. Clean People (Credits)
-        # A person is an orphan if they have no 'credits' entries
-        deleted = self.db.query(Person).filter(~Person.credits.any()).delete(synchronize_session=False)
-        stats["people"] = deleted
+        # 6. Clean People
+        stats["people"] = self.db.query(Person).filter(~Person.credits.any()).delete(synchronize_session=False)
+        self.db.commit()  # Yield Lock
 
-        # 7. Clean Empty Containers (auto-generated only)
-        deleted = self.db.query(ReadingList).filter(~ReadingList.items.any()).filter(ReadingList.auto_generated == True).delete(synchronize_session=False)
-        stats["empty_lists"] = deleted
+        # 7. Clean Empty Containers
+        stats["empty_lists"] = self.db.query(ReadingList).filter(~ReadingList.items.any()).filter(
+            ReadingList.auto_generated == True).delete(synchronize_session=False)
+        self.db.commit()  # Yield Lock
 
-        deleted = self.db.query(Collection).filter(~Collection.items.any()).filter(Collection.auto_generated == True).delete(synchronize_session=False)
-        stats["empty_collections"] = deleted
+        stats["empty_collections"] = self.db.query(Collection).filter(~Collection.items.any()).filter(
+            Collection.auto_generated == True).delete(synchronize_session=False)
+        self.db.commit()  # Yield Lock
 
-        self.db.commit()
         return stats
 
     def refresh_reading_list_descriptions(self) -> dict:
-        """
-        Iterate over auto-generated reading lists and attempt to populate
-        missing descriptions from the local seed file.
-        """
-        # Fetch lists that are auto-generated
-        # Optimization: You could filter(ReadingList.description == None)
-        # if you only want to fill gaps, but updating all allows you to
-        # fix typos by updating events.json.
+        """Populate missing descriptions for auto-generated lists."""
         lists = self.db.query(ReadingList).filter(ReadingList.auto_generated == True).all()
-
         updated_count = 0
 
         for r_list in lists:
-            # Synchronous lookup from local JSON
-            # We mock the async call since we know we are using the local sync method
-            # If you kept the async definition in EnrichmentService, you might need
-            # to run this loop differently, but for the local JSON version:
-
-            # Note: accessing private/internal method directly for sync usage
-            # or rely on the fact that get_description is effectively instant for local.
-            # Assuming you simplified EnrichmentService to be synchronous as discussed:
             description = self.enrichment.get_description(r_list.name)
-
             if description and description != r_list.description:
                 r_list.description = description
                 updated_count += 1
+
+                # Batch commit every 50 to avoid holding lock too long
+                if updated_count % 50 == 0:
+                    self.db.commit()
 
         if updated_count > 0:
             self.db.commit()
@@ -125,8 +111,8 @@ class MaintenanceService:
         updated_count = 0
         img_svc = ImageService()
 
-        # Process in chunks
-        chunk_size = 50
+        # Process in chunks of 20 (smaller chunks = more responsive app)
+        chunk_size = 20
         for i in range(0, total, chunk_size):
             chunk_ids = ids[i:i + chunk_size]
 
@@ -134,7 +120,6 @@ class MaintenanceService:
 
             for comic in comics:
                 try:
-                    #p, s = img_svc.extract_dominant_colors(str(comic.file_path))
                     palette_dict = img_svc.extract_palette(str(comic.file_path))
                     if palette_dict:
                         comic.color_primary = palette_dict['primary']
@@ -144,6 +129,7 @@ class MaintenanceService:
                 except:
                     continue
 
+            # Commit after every chunk
             self.db.commit()
 
         return {"updated": updated_count, "total_scanned": total}

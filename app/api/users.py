@@ -27,6 +27,12 @@ router = APIRouter()
 
 MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024 # 5 MB
 
+AGE_RATING_HIERARCHY = [
+    "Early Childhood", "Everyone", "G", "Kids to Adults",
+    "Everyone 10+", "PG", "Teen", "Rating Pending",
+    "M", "MA15+", "Mature 17+", "Adults Only 18+", "R18+", "X18+"
+]
+
 # Schemas
 
 class UserBase(BaseModel):
@@ -47,6 +53,8 @@ class UserCreateRequest(UserBase):
     password: str
     is_superuser: bool = False
     library_ids: List[int] = Field(default_factory=list)
+    max_age_rating: Optional[str] = None
+    allow_unknown_age_ratings: bool = False
 
 class UserUpdateRequest(UserBase):
     password: str | None = None
@@ -54,7 +62,8 @@ class UserUpdateRequest(UserBase):
     is_superuser: bool | None = None
     is_active: bool | None = None
     library_ids: List[int] | None = None
-
+    max_age_rating: Optional[str] = None
+    allow_unknown_age_ratings: Optional[bool] = None
 
 class UserListResponse(BaseModel):
     id: int
@@ -67,6 +76,8 @@ class UserListResponse(BaseModel):
     # We don't necessarily need to return the full library objects in the list view,
     # but we might want the IDs for the edit form.
     accessible_library_ids: List[int] = []
+    max_age_rating: Optional[str]
+    allow_unknown_age_ratings: bool
 
 class UserPasswordUpdateRequest(BaseModel):
     current_password: str
@@ -289,7 +300,9 @@ async def list_users(
             "email": u.email,
             "created_at": u.created_at,
             "last_login": u.last_login,
-            "accessible_library_ids": [lib.id for lib in u.accessible_libraries]
+            "accessible_library_ids": [lib.id for lib in u.accessible_libraries],
+            "max_age_rating": u.max_age_rating,
+            "allow_unknown_age_ratings": u.allow_unknown_age_ratings
         })
 
 
@@ -323,7 +336,9 @@ async def create_user(
         hashed_password=get_password_hash(user_in.password),
         is_superuser=user_in.is_superuser,
         is_active=True,
-        accessible_libraries = libraries
+        accessible_libraries = libraries,
+        max_age_rating=user_in.max_age_rating,
+        allow_unknown_age_ratings=user_in.allow_unknown_age_ratings
     )
     db.add(user)
     db.commit()
@@ -360,6 +375,13 @@ async def update_user(
     if updates.library_ids is not None:
         libraries = db.query(Library).filter(Library.id.in_(updates.library_ids)).all()
         user.accessible_libraries = libraries
+
+    if updates.max_age_rating is not None:
+        # Allow clearing the rating by sending empty string, or setting it
+        user.max_age_rating = updates.max_age_rating if updates.max_age_rating else None
+
+    if updates.allow_unknown_age_ratings is not None:
+        user.allow_unknown_age_ratings = updates.allow_unknown_age_ratings
 
     db.commit()
     return {"message": "User updated"}

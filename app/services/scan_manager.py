@@ -4,11 +4,10 @@ import json
 import traceback
 import logging
 from datetime import datetime, timezone
-from sqlalchemy import asc, or_
+from sqlalchemy import asc
 
-from app.core.settings_loader import get_system_setting, get_cached_setting
+from app.core.settings_loader import get_cached_setting
 from app.database import SessionLocal
-# Import from the package 'app.models' to trigger __init__.py
 from app.models import ScanJob, Library
 from app.models.job import JobType, JobStatus
 
@@ -49,34 +48,57 @@ class ScanManager:
         try:
             stuck_jobs = db.query(ScanJob).filter(ScanJob.status == JobStatus.RUNNING).all()
             if stuck_jobs:
-                print(f"Recovering {len(stuck_jobs)} interrupted scan jobs...")
                 self.logger.info(f"Recovering {len(stuck_jobs)} interrupted scan jobs...")
 
                 for job in stuck_jobs:
                     job.status = JobStatus.FAILED
                     job.error_message = "Scan interrupted by server restart"
                     job.completed_at = datetime.now(timezone.utc)
-
-                    # Also reset the library flag
+                    # Reset library flag directly here
                     if job.library:
                         job.library.is_scanning = False
                 db.commit()
         except Exception as e:
-            print(f"Error during job recovery: {e}")
+            self.logger.error(f"Error during job recovery: {e}")
         finally:
             db.close()
 
+    def _set_library_scanning_status(self, library_id: int, is_scanning: bool):
+        """
+        Helper: Update library status in a fresh, isolated transaction.
+        Includes retry logic to handle SQLite locking gracefully.
+        """
+        if not library_id:
+            return
+
+        # Try up to 3 times to grab the lock
+        for attempt in range(3):
+            db = SessionLocal()
+            try:
+                # We use a direct UPDATE statement for speed and atomicity
+                db.query(Library).filter(Library.id == library_id).update(
+                    {"is_scanning": is_scanning}
+                )
+                db.commit()
+                return  # Success
+            except Exception as e:
+                # If locked, wait a split second and retry
+                if "locked" in str(e).lower() and attempt < 2:
+                    time.sleep(0.5)
+                    continue
+                self.logger.error(f"Failed to set library {library_id} scanning={is_scanning}: {e}")
+            finally:
+                db.close()
+
     def add_task(self, library_id: int, force: bool = False) -> dict:
-        """Create a new job record in the database"""
+        """Create a new job record"""
         db = SessionLocal()
         try:
-            # OStrict Blocking.
-            # With multiple workers, we cannot allow a PENDING job if one is already RUNNING.
-            # Another worker would pick it up immediately, causing a DB Lock collision.
+            # STRICT BLOCKING: Do not allow queuing if a scan is already active/pending
             existing = db.query(ScanJob).filter(
                 ScanJob.library_id == library_id,
                 ScanJob.job_type == JobType.SCAN,
-                ScanJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING])  # Check BOTH states
+                ScanJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
             ).first()
 
             if existing:
@@ -99,39 +121,19 @@ class ScanManager:
             return {
                 "status": "queued",
                 "job_id": job.id,
-                "message": "Scan job added to database"
-            }
-        finally:
-            db.close()
-
-    def get_status(self):
-        """Get status of the active or next job"""
-        db = SessionLocal()
-        try:
-            active_job = db.query(ScanJob).filter(ScanJob.status == JobStatus.RUNNING).first()
-            pending_count = db.query(ScanJob).filter(ScanJob.status == JobStatus.PENDING).count()
-
-            return {
-                "is_scanning": bool(active_job),
-                "current_job_id": active_job.id if active_job else None,
-                "current_library_id": active_job.library_id if active_job else None,
-                "current_job_type": active_job.job_type if active_job else None,
-                "pending_jobs": pending_count
+                "message": "Scan job queued"
             }
         finally:
             db.close()
 
     def _process_queue(self):
-        """Poller loop: Check DB for pending jobs"""
-
+        """Poller loop"""
         self.logger.info("Database Job Worker Started")
 
         while not self._stop_event.is_set():
             db = SessionLocal()
-
             try:
-                # 1. Fetch Candidate Job (Read Only)
-                # We prioritize SCANS -> THUMBNAILS -> CLEANUP
+                # Priority: SCAN -> THUMBNAIL -> CLEANUP
                 job = db.query(ScanJob).filter(
                     ScanJob.status == JobStatus.PENDING,
                     ScanJob.job_type == JobType.SCAN
@@ -162,89 +164,71 @@ class ScanManager:
                     db.commit()
 
                     if rows_affected == 0:
-                        # Someone else stole the job, Loop again.
                         db.close()
                         continue
 
-                    # We successfully claimed the job. Set the library flag.
-                    # Re-fetch the job to get the fresh object
-                    job = db.query(ScanJob).get(job.id)
-                    if job.library:
-                        job.library.is_scanning = True
+                    # Extract data before closing session
+                    job_data = {
+                        "id": job.id,
+                        "library_id": job.library_id,
+                        "type": job.job_type,
+                        "force": job.force_scan
+                    }
+                    db.close()
 
-                    db.commit()
+                    # Set Flag (using helper)
+                    if job_data['library_id']:
+                        self._set_library_scanning_status(job_data['library_id'], True)
 
-                    # Extract primitive data to pass to worker
-                    # We MUST do this because 'job' object is bound to 'db' session
-                    # which we are about to close.
-                    job_id = job.id
-                    library_id = job.library_id
-                    job_type = job.job_type
-                    force_scan = job.force_scan
-
-                    db.close()  # Close polling session
-
-                    # Execute in fresh session
-                    if job_type == JobType.SCAN:
-                        self._run_scan_job(job_id, library_id, force_scan)
-                    elif job_type == JobType.THUMBNAIL:
-                        self._run_thumbnail_job(job_id, library_id, force_scan)
-                    elif job_type == JobType.CLEANUP:
-                        self._run_cleanup_job(job_id, library_id)
-
-                    # Don't sleep if we just did work
-                    continue
+                    # Execute
+                    if job_data['type'] == JobType.SCAN:
+                        self._run_scan_job(job_data)
+                    elif job_data['type'] == JobType.THUMBNAIL:
+                        self._run_thumbnail_job(job_data)
+                    elif job_data['type'] == JobType.CLEANUP:
+                        self._run_cleanup_job(job_data)
 
                 else:
-                    # No jobs? Sleep a bit to save CPU
                     db.close()
                     time.sleep(2)
 
             except Exception as e:
-
                 self.logger.error(f"Worker polling error: {e}")
-
-                if db:
-                    db.close()
+                if db: db.close()
                 time.sleep(5)
 
-    def _run_scan_job(self, job_id: int, library_id: int, force: bool):
-        """Execute the scan logic"""
+    def _run_scan_job(self, job_data):
         db = SessionLocal()
-        try:
-            job = db.query(ScanJob).get(job_id)
-            library = db.query(Library).get(library_id)
+        job_id = job_data['id']
+        library_id = job_data['library_id']
+        force = job_data['force']
 
-            if not library or not job:
-                self.logger.error(f"Critical: Job {job_id} or Library missing.")
+        try:
+            library = db.query(Library).get(library_id)
+            if not library:
+                self.logger.error(f"Library {library_id} not found for job {job_id}")
                 return
 
-            # Capture "First Scan" state
             is_first_scan = library.last_scanned is None
-
-            self.logger.info(f"Starting SCAN job {job_id} for {library.name} (Forced: {force}) (First scan: {is_first_scan})")
+            self.logger.info(f"Starting SCAN job {job_id} for {library.name}")
 
             # --- RUN SCANNER ---
             scanner = LibraryScanner(library, db)
             results = scanner.scan(force=force)
             # -------------------
 
-            # Update Job on Success
-            job.status = JobStatus.COMPLETED
-            job.completed_at = datetime.now(timezone.utc)
-
-            # Store summary
-            summary = {
-                "imported": results.get("imported", 0),
-                "updated": results.get("updated", 0),
-                "deleted": results.get("deleted", 0),
-                "errors": results.get("errors", 0),
-                "elapsed": results.get("elapsed", 0)
-            }
-            job.result_summary = json.dumps(summary)
-
-            # Reset flag
-            library.is_scanning = False
+            # Update Job
+            db.query(ScanJob).filter(ScanJob.id == job_id).update({
+                "status": JobStatus.COMPLETED,
+                "completed_at": datetime.now(timezone.utc),
+                "result_summary": json.dumps({
+                    "imported": results.get("imported", 0),
+                    "updated": results.get("updated", 0),
+                    "deleted": results.get("deleted", 0),
+                    "errors": results.get("errors", 0),
+                    "elapsed": results.get("elapsed", 0)
+                })
+            })
 
             # --- QUEUE NEXT JOBS ---
 
@@ -274,39 +258,30 @@ class ScanManager:
             db.commit()
 
         except Exception as e:
-
-            print(f"Scan Job {job_id} Failed: {e}")
             self.logger.error(f"Scan Job {job_id} Failed: {e}")
 
             traceback.print_exc()
             db.rollback()
-
-            # Re-fetch for error state update
-            job = db.query(ScanJob).get(job_id)
-            library = db.query(Library).get(library_id)
-
-            if job:
-                job.status = JobStatus.FAILED
-                job.error_message = str(e)
-                job.completed_at = datetime.now(timezone.utc)
-
-            if library:
-                library.is_scanning = False
-
+            db.query(ScanJob).filter(ScanJob.id == job_id).update({
+                "status": JobStatus.FAILED,
+                "error_message": str(e),
+                "completed_at": datetime.now(timezone.utc)
+            })
             db.commit()
         finally:
             db.close()
+            # Reset Flag safely outside main transaction
+            self._set_library_scanning_status(library_id, False)
 
-    def _run_thumbnail_job(self, job_id: int, library_id: int, force: bool):
-        """Execute the thumbnail logic"""
+    def _run_thumbnail_job(self, job_data):
         db = SessionLocal()
+        job_id = job_data['id']
+        library_id = job_data['library_id']
+        force = job_data['force']
+
         try:
-            job = db.query(ScanJob).get(job_id)
-            if not job: return
+            self.logger.info(f"Starting THUMBNAIL job {job_id}")
 
-            self.logger.info(f"Starting THUMBNAIL job {job_id} for Library {library_id}")
-
-            # --- RUN THUMBNAILER ---
             service = ThumbnailService(db, library_id)
             use_parallel = get_cached_setting('system.parallel_image_processing', False)
 
@@ -314,43 +289,37 @@ class ScanManager:
                 stats = service.process_missing_thumbnails_parallel(force=force)
             else:
                 stats = service.process_missing_thumbnails(force=force)
-            # -----------------------
 
-            job.status = JobStatus.COMPLETED
-            job.result_summary = json.dumps(stats)
-            job.completed_at = datetime.now(timezone.utc)
-
-            # --- Reset the Library Flag ---
-            library = db.query(Library).get(library_id)
-            if library:
-                library.is_scanning = False
-
+            db.query(ScanJob).filter(ScanJob.id == job_id).update({
+                "status": JobStatus.COMPLETED,
+                "result_summary": json.dumps(stats),
+                "completed_at": datetime.now(timezone.utc)
+            })
             db.commit()
 
         except Exception as e:
             self.logger.error(f"Thumbnail Job {job_id} Failed: {e}")
             traceback.print_exc()
             db.rollback()
-
-            # Re-fetch and Reset Library Flag on Failure ---
-            library = db.query(Library).get(library_id)
-            if library: library.is_scanning = False
-
-            job = db.query(ScanJob).get(job_id)
-            if job:
-                job.status = JobStatus.FAILED
-                job.error_message = str(e)
-                job.completed_at = datetime.now(timezone.utc)
+            db.query(ScanJob).filter(ScanJob.id == job_id).update({
+                "status": JobStatus.FAILED,
+                "error_message": str(e),
+                "completed_at": datetime.now(timezone.utc)
+            })
             db.commit()
         finally:
             db.close()
+            # Reset Flag safely
+            self._set_library_scanning_status(library_id, False)
 
-    def _run_cleanup_job(self, job_id: int, library_id: int = None):
-        """Execute the orphan cleanup logic"""
+    def _run_cleanup_job(self, job_data):
         db = SessionLocal()
+        job_id = job_data['id']
+        library_id = job_data['library_id']
+
         try:
-            job = db.query(ScanJob).get(job_id)
-            if not job: return
+            context = f"Library {library_id}" if library_id else "GLOBAL"
+            self.logger.info(f"Starting CLEANUP job {job_id} ({context})")
 
             # Logging context
             context_str = f"Library {library_id}" if library_id else "GLOBAL"
@@ -363,37 +332,28 @@ class ScanManager:
             # If None, MaintenanceService cleans EVERYTHING.
             # If Int, MaintenanceService cleans ONLY that library.
             stats = maintenance.cleanup_orphans(library_id=library_id)
-            # -----------------------
 
-            job.status = JobStatus.COMPLETED
-            job.result_summary = json.dumps(stats)
-            job.completed_at = datetime.now(timezone.utc)
-
-            # Reset Library Flag (Only if it was a scoped job)
-            if library_id:
-                library = db.query(Library).get(library_id)
-                if library: library.is_scanning = False
-
+            db.query(ScanJob).filter(ScanJob.id == job_id).update({
+                "status": JobStatus.COMPLETED,
+                "result_summary": json.dumps(stats),
+                "completed_at": datetime.now(timezone.utc)
+            })
             db.commit()
 
         except Exception as e:
             self.logger.error(f"Cleanup Job {job_id} Failed: {e}")
-            traceback.print_exc()
             db.rollback()
-
-            # Error State
-            if library_id:
-                library = db.query(Library).get(library_id)
-                if library: library.is_scanning = False
-
-            job = db.query(ScanJob).get(job_id)
-            if job:
-                job.status = JobStatus.FAILED
-                job.error_message = str(e)
-                job.completed_at = datetime.now(timezone.utc)
+            db.query(ScanJob).filter(ScanJob.id == job_id).update({
+                "status": JobStatus.FAILED,
+                "error_message": str(e),
+                "completed_at": datetime.now(timezone.utc)
+            })
             db.commit()
         finally:
             db.close()
+            # Reset Flag safely (only if library specific)
+            if library_id:
+                self._set_library_scanning_status(library_id, False)
 
     def add_cleanup_task(self) -> dict:
         """Queue a global cleanup task"""
@@ -408,11 +368,7 @@ class ScanManager:
             if existing:
                 return {"status": "ignored", "job_id": existing.id, "message": "Cleanup already queued"}
 
-            job = ScanJob(
-                library_id=None,
-                job_type=JobType.CLEANUP,
-                status=JobStatus.PENDING
-            )
+            job = ScanJob(library_id=None, job_type=JobType.CLEANUP, status=JobStatus.PENDING)
             db.add(job)
             db.commit()
             db.refresh(job)

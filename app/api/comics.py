@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response, FileResponse
-from sqlalchemy import Float, func
+from sqlalchemy import Float, func, case, cast, or_
 from sqlalchemy.orm import joinedload, selectinload
 from typing import List, Annotated, Literal
 from pathlib import Path
 import re
 import random
 
-from app.core.comic_helpers import get_reading_time, get_format_sort_index
+from app.core.comic_helpers import get_reading_time, get_format_sort_index, REVERSE_NUMBERING_SERIES
 from app.api.deps import SessionDep, CurrentUser, ComicDep
 
 from app.models.comic import Comic, Volume
@@ -274,6 +274,7 @@ async def get_cover_manifest(
 ):
     """
     Returns a list of Comic IDs and Titles to power the Cover Browser.
+    Handles Reverse Numbering (Countdown) and Date Sorting (Zero Hour).
     """
 
     # 1. Base Query
@@ -292,15 +293,42 @@ async def get_cover_manifest(
     # Apply Security
     query = filter_by_user_access(query, current_user)
 
+    # --- DEFINE SORT LOGIC (Shared with comic_helpers) ---
+    # Push NULL/-1 dates to bottom (9999)
+    sort_year = case((or_(Comic.year == None, Comic.year == -1), 9999), else_=Comic.year)
+    sort_month = case((or_(Comic.month == None, Comic.month == -1), 99), else_=Comic.month)
+    sort_day = case((or_(Comic.day == None, Comic.day == -1), 99), else_=Comic.day)
+    sort_number = cast(Comic.number, Float)
+
+
     # 3. Context Filtering & Sorting
     if context_type == "volume":
+
+        # Check for Gimmick Series Name via simple scalar query first
+        # (Optimization: We could join, but explicit check is safer for logic branching)
+        series_name = db.query(Series.name).join(Volume).filter(Volume.id == context_id).scalar()
+
+        number_direction = sort_number.asc()
+        if series_name and series_name.lower() in REVERSE_NUMBERING_SERIES:
+            number_direction = sort_number.desc()
+
         query = query.filter(Comic.volume_id == context_id) \
-            .order_by(func.cast(Comic.number, Float), Comic.number)
+            .order_by(sort_year.asc(), sort_month.asc(), sort_day.asc(),
+            number_direction)
 
     elif context_type == "series":
+
+        # Check Name
+        series_name = db.query(Series.name).filter(Series.id == context_id).scalar()
+
+        number_direction = sort_number.asc()
+        if series_name and series_name.lower() in REVERSE_NUMBERING_SERIES:
+            number_direction = sort_number.desc()
+
         format_weight = get_format_sort_index()
         query = query.filter(Volume.series_id == context_id) \
-            .order_by(Volume.volume_number, format_weight, func.cast(Comic.number, Float))
+            .order_by(Volume.volume_number, format_weight,
+                      sort_year.asc(), sort_month.asc(), sort_day.asc(), number_direction)
 
     elif context_type == "reading_list":
         # Explicit Join: Join ReadingListItem to Comic

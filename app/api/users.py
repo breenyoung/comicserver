@@ -96,9 +96,7 @@ async def get_user_dashboard(db: SessionDep, current_user: CurrentUser):
     opds_enabled = settings_svc.get("server.opds_enabled")
 
     # --- PREPARE SECURITY FILTER ---
-    banned_condition = None
-    if current_user.max_age_rating:
-        banned_condition = get_banned_comic_condition(current_user)
+    banned_condition = get_banned_comic_condition(current_user)
 
     # 1. Calculate Stats
     # Join Progress -> Comic to get page counts

@@ -7,8 +7,7 @@ from pathlib import Path
 import re
 import logging
 
-from app.core.comic_helpers import (get_format_sort_index, get_format_weight, get_age_rating_config,
-                                    get_comic_age_restriction, get_banned_comic_condition)
+from app.core.comic_helpers import (get_age_rating_config, get_comic_age_restriction)
 from app.core.comic_helpers import get_format_sort_index, get_format_weight, REVERSE_NUMBERING_SERIES
 from app.api.deps import SessionDep, CurrentUser
 from app.models.comic import Comic, Volume
@@ -95,8 +94,9 @@ async def get_comic_reader_init(comic_id: int,
     sort_number = cast(Comic.number, Float)
 
     # --- PREPARE NEIGHBOR FILTER ---
-    # We must filter the "Next/Prev" lists so users don't navigate INTO a banned book.
-    banned_filter = get_banned_comic_condition(current_user)
+    # FIX: Use Whitelist (get_comic_age_restriction) instead of Negated Blacklist.
+    # This ensures Unrated (NULL) comics are included correctly.
+    safe_filter = get_comic_age_restriction(current_user)
 
     logger.debug(f"Context type for reader: {context_type}")
 
@@ -112,12 +112,8 @@ async def get_comic_reader_init(comic_id: int,
             PullListItem.pull_list_id == context_id
         )
 
-        #query = db.query(PullListItem.comic_id).filter(
-        #    PullListItem.pull_list_id == context_id
-        #)
-
-        if banned_filter is not None:
-            query = query.filter(~banned_filter)  # Exclude banned
+        if safe_filter is not None:
+            query = query.filter(safe_filter)
 
         items = query.order_by(PullListItem.sort_order).all()
 
@@ -129,16 +125,13 @@ async def get_comic_reader_init(comic_id: int,
 
         context_label = db.query(ReadingList.name).filter(ReadingList.id == context_id).scalar()
 
-        #query = db.query(ReadingListItem.comic_id).filter(
-        #    ReadingListItem.reading_list_id == context_id
-        #)
+        # FIX: Always Join Comic
+        query = db.query(ReadingListItem.comic_id) \
+            .join(Comic, ReadingListItem.comic_id == Comic.id) \
+            .filter(ReadingListItem.reading_list_id == context_id)
 
-        query = db.query(ReadingListItem.comic_id).join(Comic, ReadingListItem.comic_id == Comic.id).filter(
-            ReadingListItem.reading_list_id == context_id
-        )
-
-        if banned_filter is not None:
-            query = query.filter(~banned_filter)
+        if safe_filter is not None:
+            query = query.filter(safe_filter)
 
         items = query.order_by(ReadingListItem.position).all()
 
@@ -157,8 +150,8 @@ async def get_comic_reader_init(comic_id: int,
             .join(Series, Volume.series_id == Series.id) \
             .filter(CollectionItem.collection_id == context_id)
 
-        if banned_filter is not None:
-            query = query.filter(~banned_filter)
+        if safe_filter is not None:
+            query = query.filter(safe_filter)
 
         items = query.order_by(
             Comic.year.asc(),
@@ -187,8 +180,8 @@ async def get_comic_reader_init(comic_id: int,
             Volume.series_id == context_id
         )
 
-        if banned_filter is not None:
-            query = query.filter(~banned_filter)
+        if safe_filter is not None:
+            query = query.filter(safe_filter)
 
         items = query.order_by(
             Volume.volume_number,
@@ -222,8 +215,8 @@ async def get_comic_reader_init(comic_id: int,
             Comic.volume_id == comic.volume_id
         )
 
-        if banned_filter is not None:
-            query = query.filter(~banned_filter)
+        if safe_filter is not None:
+            query = query.filter(safe_filter)
 
         siblings = query.all()
 

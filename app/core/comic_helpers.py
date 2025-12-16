@@ -61,7 +61,7 @@ def get_age_rating_config(user) -> tuple[None, None] | tuple[list[str | Any], li
         :param user:
         :return:
     """
-    if not user or not user.max_age_rating:
+    if not user or user.is_superuser or not user.max_age_rating:
         return None, None  # No restrictions
 
     try:
@@ -176,6 +176,8 @@ def check_container_restriction(db, user, item_model, fk_column, container_id: i
         return
 
     banned_condition = get_banned_comic_condition(user)
+    if banned_condition is None:
+        return
 
     # Check if ANY item in this container matches the ban
     has_banned = db.query(item_model.id).join(Comic)\

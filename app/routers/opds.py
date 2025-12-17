@@ -5,6 +5,7 @@ from sqlalchemy.orm import joinedload
 from datetime import datetime, timezone
 
 from app.api.opds_deps import OPDSUser, SessionDep
+from app.models import ComicCredit
 from app.models.library import Library
 from app.models.series import Series
 from app.models.comic import Comic, Volume
@@ -126,7 +127,7 @@ async def opds_series(series_id: int, request: Request, user: OPDSUser, db: Sess
     # ---------------------------------------
 
     comics = query.options(
-            joinedload(Comic.credits).joinedload("person"), # Load credits + person names
+            joinedload(Comic.credits).joinedload(ComicCredit.person), # Load credits + person names
             joinedload(Comic.genres),    # Load Genres
             joinedload(Comic.volume).joinedload(Volume.series) # Load Series Name
         ).order_by(Volume.volume_number, Comic.number).all()

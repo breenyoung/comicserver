@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 
 from app.core.settings_loader import get_cached_setting
 from app.api.deps import SessionDep, CurrentUser
-from app.core.comic_helpers import get_smart_cover, get_comic_age_restriction, get_series_age_restriction
+from app.core.comic_helpers import get_smart_cover, get_series_age_restriction
 from app.models.comic import Comic, Volume
 from app.models.series import Series
 from app.models.user import User
@@ -139,11 +139,13 @@ def get_top_rated(
     Secured with age restriction
     """
     query = db.query(Comic) \
+        .join(Volume).join(Series) \
         .options(joinedload(Comic.volume).joinedload(Volume.series)) \
         .filter(Comic.community_rating >= 4.0)
 
-    # --- AGE RESTRICTION ---
-    age_filter = get_comic_age_restriction(current_user)
+    # --- AGE RESTRICTION (Series level) ---
+    # Hide "Safe" comics if they belong to a "Banned" series
+    age_filter = get_series_age_restriction(current_user)
     if age_filter is not None:
         query = query.filter(age_filter)
     # -----------------------
@@ -170,6 +172,7 @@ def get_resume_reading(
     # 2. Build Query
     query = db.query(Comic, ReadingProgress) \
         .join(ReadingProgress) \
+        .join(Volume).join(Series) \
         .options(joinedload(Comic.volume).joinedload(Volume.series)) \
         .filter(
         ReadingProgress.user_id == current_user.id,
@@ -177,8 +180,8 @@ def get_resume_reading(
         ReadingProgress.current_page > 0
     )
 
-    # --- AGE RESTRICTION ---
-    age_filter = get_comic_age_restriction(current_user)
+    # --- AGE RESTRICTION (Series level) ---
+    age_filter = get_series_age_restriction(current_user)
     if age_filter is not None:
         query = query.filter(age_filter)
     # -----------------------
@@ -245,7 +248,7 @@ def get_up_next(
     results = []
 
     # Prepare Age Filter for the loop
-    age_filter = get_comic_age_restriction(current_user)
+    age_filter = get_series_age_restriction(current_user)
 
     for progress in recent_history:
         # Access via eager loaded relationship (no query)
@@ -268,30 +271,27 @@ def get_up_next(
         # If Standard: Next issue is Current + 1
         is_reverse = series_obj.name.lower() in REVERSE_NUMBERING_SERIES
 
+        # Base Next Query
+        # Explicit Join Volume/Series for Filter
+        next_query = db.query(Comic) \
+            .join(Volume).join(Series) \
+            .options(joinedload(Comic.volume).joinedload(Volume.series)) \
+            .filter(Comic.volume_id == progress.comic.volume_id)
+
         if is_reverse:
             # Find next issue (LOWER number)
             # We want the largest number that is SMALLER than current
             # e.g. Current=51, we want 50.
-            next_query = db.query(Comic) \
-                .options(joinedload(Comic.volume).joinedload(Volume.series)) \
-                .filter(
-                Comic.volume_id == progress.comic.volume_id,
-                cast(Comic.number, Float) < current_number
-            )
+            next_query = next_query.filter(cast(Comic.number, Float) < current_number)
 
         else:
             # Standard Logic (Higher number)
             # Find the next comic
             # We're still going to run 1 query here per series, but it's very fast on SQLite
             # because it's a simple indexed lookup on (volume_id, number).
-            next_query = db.query(Comic) \
-                .options(joinedload(Comic.volume).joinedload(Volume.series)) \
-                .filter(
-                Comic.volume_id == progress.comic.volume_id,
-                cast(Comic.number, Float) > current_number
-            )
+            next_query = next_query.filter(cast(Comic.number, Float) > current_number)
 
-        # --- APPLY AGE FILTER TO SUGGESTION ---
+        # --- APPLY AGE FILTER TO SUGGESTION (Series level) ---
         if age_filter is not None:
             next_query = next_query.filter(age_filter)
         # --------------------------------------

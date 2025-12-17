@@ -1,8 +1,7 @@
-import os
-import shutil
 from fastapi import APIRouter, status, HTTPException, UploadFile, File, Depends
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy import or_
+from sqlalchemy.orm import selectinload, contains_eager
 from typing import List, Annotated, Optional
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
@@ -12,7 +11,7 @@ from sqlalchemy import func, not_
 
 from app.api.deps import SessionDep, AdminUser, CurrentUser, PaginatedResponse, PaginationParams
 from app.config import settings
-from app.core.comic_helpers import get_reading_time, get_banned_comic_condition, get_comic_age_restriction
+from app.core.comic_helpers import get_reading_time, get_banned_comic_condition, get_series_age_restriction
 from app.core.security import verify_password, get_password_hash
 from app.models.comic import Comic, Volume
 from app.models.series import Series
@@ -96,8 +95,9 @@ async def get_user_dashboard(db: SessionDep, current_user: CurrentUser):
     opds_enabled = settings_svc.get("server.opds_enabled")
 
     # --- PREPARE SECURITY FILTER ---
-    # USE WHITELIST (Handles NULLs correctly)
-    safe_filter = get_comic_age_restriction(current_user)
+    # FIX: Use Series-Level Poison Pill instead of Row-Level Check.
+    # This prevents "Safe" comics from "Banned" series appearing in Continue Reading or Stats.
+    series_age_filter = get_series_age_restriction(current_user)
     banned_condition = get_banned_comic_condition(current_user)
 
     # 1. Calculate Stats
@@ -106,13 +106,14 @@ async def get_user_dashboard(db: SessionDep, current_user: CurrentUser):
         func.count(ReadingProgress.id).label('issues_read'),
         func.sum(Comic.page_count).label('total_pages')
     ).join(Comic, ReadingProgress.comic_id == Comic.id) \
+        .join(Volume).join(Series) \
         .filter(
         ReadingProgress.user_id == current_user.id,
         ReadingProgress.completed == True
     )
 
-    if safe_filter is not None:
-        stats_query = stats_query.filter(safe_filter)
+    if series_age_filter is not None:
+        stats_query = stats_query.filter(series_age_filter)
 
     stats_result = stats_query.first()
 
@@ -137,16 +138,22 @@ async def get_user_dashboard(db: SessionDep, current_user: CurrentUser):
 
     # 3. Get "Continue Reading" (Limit 6)
     # OPTIMIZATION: joinedload Comic->Volume->Series to prevent N+1 loop during formatting
-    recent_progress_query = db.query(ReadingProgress).options(
-        joinedload(ReadingProgress.comic).joinedload(Comic.volume).joinedload(Volume.series)
-    ).filter(
-        ReadingProgress.user_id == current_user.id,
-        ReadingProgress.completed == False,
-        ReadingProgress.current_page > 0
-    )
+    # FIX: Use contains_eager to rely on the explicit joins we made.
+    # This prevents double-joining and ensures filtering applies to the loaded objects.
 
-    if safe_filter is not None:
-        recent_progress_query = recent_progress_query.filter(safe_filter)
+    recent_progress_query = db.query(ReadingProgress) \
+        .join(Comic).join(Volume).join(Series) \
+        .options(
+            contains_eager(ReadingProgress.comic).contains_eager(Comic.volume).contains_eager(Volume.series)
+        ).filter(
+        ReadingProgress.user_id == current_user.id,
+        # Robust check for Incomplete (Handles False or NULL)
+        or_(ReadingProgress.completed == False, ReadingProgress.completed == None),
+        ReadingProgress.current_page > 0
+        )
+
+    if series_age_filter is not None:
+        recent_progress_query = recent_progress_query.filter(series_age_filter)
 
     recent_progress = recent_progress_query.order_by(ReadingProgress.last_read_at.desc()).limit(6).all()
 

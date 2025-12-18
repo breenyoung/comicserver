@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql.expression import func, desc, cast
 from typing import List
 from datetime import datetime, timezone, timedelta
+from collections import defaultdict
 
 from app.core.settings_loader import get_cached_setting
 from app.api.deps import SessionDep, CurrentUser
@@ -13,7 +14,7 @@ from app.models.series import Series
 from app.models.user import User
 from app.models.reading_progress import ReadingProgress
 from app.schemas.search import ComicSearchItem
-from app.core.comic_helpers import REVERSE_NUMBERING_SERIES
+from app.core.comic_helpers import REVERSE_NUMBERING_SERIES, NON_PLAIN_FORMATS
 
 router = APIRouter()
 
@@ -44,6 +45,52 @@ def format_home_item(comic: Comic, progress: ReadingProgress = None) -> dict:
 
     return item
 
+# --- HELPER FOR COVER LOGIC ---
+def _pick_best_cover(series_obj, comics_list):
+    """
+    Selects the best cover from a list of lightweight comic tuples/objects.
+    Adapts logic from libraries.py to handle Reverse Numbering.
+    """
+    if not comics_list:
+        return None
+
+    # Helper: Check if format is "Standard"
+    def is_standard_format(fmt: str) -> bool:
+        if not fmt: return True
+        return fmt.lower() not in NON_PLAIN_FORMATS
+
+    # Helper: Safe Sort Key
+    def issue_sort_key(c):
+        try:
+            return float(c.number)
+        except:
+            return 999999
+
+    # 1. Gimmick Detection
+    is_reverse = series_obj.name.lower() in REVERSE_NUMBERING_SERIES
+
+    # 2. Filter for standards
+    standards = [c for c in comics_list if is_standard_format(c.format)]
+    pool = standards if standards else comics_list
+
+    # 3. Try finding Issue #1 (Only if NOT reverse)
+    if not is_reverse:
+        issue_ones = [c for c in pool if c.number == '1']
+        if issue_ones:
+            # If multiple #1s (e.g. multiple volumes), picking the first found or sorting is fine
+            return issue_ones[0]
+
+    # 4. Fallback: Sort by number
+    pool.sort(key=issue_sort_key)
+
+    # 5. Pick First or Last based on Gimmick
+    if is_reverse:
+        return pool[-1]  # Highest Number (e.g. Countdown #52)
+    else:
+        return pool[0]   # Lowest Number (e.g. Spider-Man #10)
+
+
+
 @router.get("/random", response_model=List[dict], name="random_gems")
 def get_random_gems(
         db: SessionDep,
@@ -73,43 +120,33 @@ def get_random_gems(
     # Instead of looping and querying, we grab the first comic for all these series at once.
     series_ids = [s.id for s in random_series]
 
-    # Subquery: Rank comics by number within each series (Partition by Series, Order by Number)
-    # This assigns 'rn=1' to the first issue of every series.
-    subquery = (
+    # Fetch lightweight data for ALL comics in these series
+    # This allows us to sort/filter in Python correctly
+    raw_comics = (
         db.query(
             Comic.id,
-            func.row_number().over(
-                partition_by=Volume.series_id,
-                order_by=cast(Comic.number, Float).asc()
-            ).label("rn")
+            Comic.number,
+            Comic.year,
+            Comic.format,
+            Comic.publisher,  # Needed for response
+            Volume.series_id
         )
         .join(Volume)
         .filter(Volume.series_id.in_(series_ids))
-        .subquery()
+        .all()
     )
 
-    # Main Query: Join against the subquery and keep only the #1s
-    covers = db.query(Comic) \
-        .join(subquery, Comic.id == subquery.c.id) \
-        .filter(subquery.c.rn == 1) \
-        .all()
-
-    # Map series_id -> cover_comic
-    # (We need to access volume.series_id, so ensure it's loaded or accessed via cover.volume_id map)
-    cover_map = {}
-    for c in covers:
-        # We know the volume is loaded because we joined it in the subquery logic,
-        # but to be safe with ORM objects:
-        if c.volume:
-            cover_map[c.volume.series_id] = c
+    # Group by Series
+    series_map = defaultdict(list)
+    for rc in raw_comics:
+        series_map[rc.series_id].append(rc)
 
 
     results = []
     for s in random_series:
+        s_comics = series_map.get(s.id, [])
+        first_issue = _pick_best_cover(s, s_comics)
 
-        first_issue = cover_map.get(s.id)
-
-        # Fallback: If logic missed (e.g. empty series), skip
         if not first_issue:
             continue
 
@@ -118,10 +155,9 @@ def get_random_gems(
             "name": s.name,
             "start_year": first_issue.year,
             "thumbnail_path": f"/api/comics/{first_issue.id}/thumbnail",
-            # Add extra metadata for the Series Card if needed
             "publisher": first_issue.publisher,
             "volume_count": len(s.volumes) if s.volumes else 0,
-            "starred": False  # You can query UserSeries if you want this accurate
+            "starred": False # You can query UserSeries if you want this accurate
         })
 
     return results
@@ -354,37 +390,30 @@ def get_popular(
     # 2. Batch Fetch Covers (SQLite Compatible)
     series_ids = [s.id for s in popular_series]
 
-    # Subquery: Rank comics by number within each series (Partition by Series, Order by Number)
-    subquery = (
+    raw_comics = (
         db.query(
             Comic.id,
-            func.row_number().over(
-                partition_by=Volume.series_id,
-                order_by=cast(Comic.number, Float).asc()
-            ).label("rn")
+            Comic.number,
+            Comic.year,
+            Comic.format,
+            Comic.publisher,
+            Volume.series_id
         )
         .join(Volume)
         .filter(Volume.series_id.in_(series_ids))
-        .subquery()
+        .all()
     )
 
-    # Main Query: Join against the subquery and keep only the #1s
-    covers = db.query(Comic) \
-        .join(subquery, Comic.id == subquery.c.id) \
-        .filter(subquery.c.rn == 1) \
-        .options(joinedload(Comic.volume)) \
-        .all()
+    series_map = defaultdict(list)
+    for rc in raw_comics:
+        series_map[rc.series_id].append(rc)
 
-    # Map series_id -> cover_comic
-    cover_map = {}
-    for c in covers:
-        if c.volume:
-            cover_map[c.volume.series_id] = c
 
     # 3. Format Results
     results = []
     for s in popular_series:
-        first_issue = cover_map.get(s.id)
+        s_comics = series_map.get(s.id, [])
+        first_issue = _pick_best_cover(s, s_comics)
 
         if not first_issue:
             continue

@@ -298,7 +298,14 @@ function dashboard() {
         },
 
         async deleteSmartList(id) {
-            if(!confirm("Delete this filter?")) return;
+
+            const confirmed = await window.parker.dialog.confirm(
+                "Delete List?",
+                "Delete this smart filter?",
+                { isDestructive: true, confirmText: 'Remove' }
+            );
+
+            if(!confirmed) return;
             try {
                 const res = await fetch(window.parker.route('smart_lists.delete', { list_id: id }), { method: 'DELETE' });
                 if(res.ok) {

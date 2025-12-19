@@ -6,7 +6,7 @@ from app.api.deps import SessionDep, ComicDep, VolumeDep, SeriesDep, LibraryDep,
 from app.core.templates import templates
 from app.models.comic import Comic, Volume
 from app.core.login_effects import get_active_effect
-from app.core.login_backgrounds import SOLID_COLORS
+from app.core.login_backgrounds import SOLID_COLORS, STATIC_COVERS
 from app.services.settings_service import SettingsService
 
 router = APIRouter()
@@ -121,11 +121,15 @@ async def login_page(request: Request, db: SessionDep):
     # Add specific context based on style
     if login_background_style == "solid_color":
         color_key = svc.get("ui.login_solid_color") or "gotham_night"
-        color_data = SOLID_COLORS.get(color_key, SOLID_COLORS["gotham_night"])
+        if color_key not in SOLID_COLORS:
+            color_key = "gotham_night"  # Handle stale DB values
+        color_data = SOLID_COLORS.get(color_key)
         context["login_solid_color"] = color_data["gradient"]
 
     elif login_background_style == "static_cover":
         cover_filename = svc.get("ui.login_static_cover") or "amazing-fantasy-15.jpg"
+        if cover_filename not in STATIC_COVERS:
+            cover_filename = "amazing-fantasy-15.jpg"  # Handle stale DB values
         context["login_static_cover"] = cover_filename
 
 

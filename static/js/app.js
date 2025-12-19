@@ -248,31 +248,6 @@ document.addEventListener('alpine:init', () => {
 });
 
 
-// Toast notifications
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    if (!container) return; // Guard against missing container on login page
-
-    const toast = document.createElement('div');
-
-    const colors = {
-        info: 'bg-gray-800',
-        success: 'bg-green-600',
-        error: 'bg-red-600',
-        warning: 'bg-yellow-600'
-    };
-
-    toast.className = `${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg transition-opacity`;
-    toast.textContent = message;
-    container.appendChild(toast);
-
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
-
-
 // Keyboard shortcuts
 document.addEventListener('keydown', function(e) {
     // Global shortcuts (Ctrl/Cmd + key)
@@ -307,105 +282,122 @@ document.addEventListener('error', function(e) {
     }
 }, true);
 
-// Debounce utility
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
+
+(() => {
+
+    // Toast notifications
+    const showToast = (message, type = 'info') => {
+
+        const container = document.getElementById('toast-container');
+        if (!container) return; // Guard against missing container on login page
+
+        const toast = document.createElement('div');
+
+        const colors = {
+            info: 'bg-gray-800',
+            success: 'bg-green-600',
+            error: 'bg-red-600',
+            warning: 'bg-yellow-600'
         };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
+
+        toast.className = `${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg transition-opacity`;
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // Debounce utility
+    const debounce = (func, wait) => {
+
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    // Format file size
+    const formatFileSize = (bytes) => {
+
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    const formatBytes = (bytes, decimals = 2) => {
+
+        if (!bytes) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    // Format date
+    const formatDate = (dateString) => {
+
+        const date = new Date(dateString);
+        const now = new Date();
+        const diff = now - date;
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+        if (days === 0) return 'Today';
+        if (days === 1) return 'Yesterday';
+        if (days < 7) return `${days} days ago`;
+        if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
+        if (days < 365) return `${Math.floor(days / 30)} months ago`;
+        return date.toLocaleDateString();
+    }
+
+    // Storage & Prefs
+    const storage = {
+        get(key, defaultValue = null) {
+            try {
+                const item = localStorage.getItem(key);
+                return item ? JSON.parse(item) : defaultValue;
+            } catch (e) {
+                console.error('Error reading from localStorage:', e);
+                return defaultValue;
+            }
+        },
+        set(key, value) {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch (e) { console.error('Error writing to localStorage:', e); }
+        },
+        remove(key) {
+            try { localStorage.removeItem(key); } catch (e) { }
+        }
     };
-}
 
-// Format file size
-function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-}
+    const prefs = {
+        getViewMode() { return storage.get('viewMode', 'grid'); },
+        setViewMode(mode) { storage.set('viewMode', mode); },
+        getFitMode() { return storage.get('fitMode', 'contain'); },
+        setFitMode(mode) { storage.set('fitMode', mode); }
+    };
 
-function formatBytes(bytes, decimals = 2) {
-    if (!bytes) return '0 Bytes';
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-}
 
-// Format date
-function formatDate(dateString) {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now - date;
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    // Export utilities
+    window.parker = { ...(window.parker || {}),
+        showToast,
+        debounce,
+        formatFileSize,
+        formatBytes,
+        formatDate,
+        storage,
+        prefs
+    };
 
-    if (days === 0) return 'Today';
-    if (days === 1) return 'Yesterday';
-    if (days < 7) return `${days} days ago`;
-    if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
-    if (days < 365) return `${Math.floor(days / 30)} months ago`;
-    return date.toLocaleDateString();
-}
-
-// Storage & Prefs
-const storage = {
-    get(key, defaultValue = null) {
-        try {
-            const item = localStorage.getItem(key);
-            return item ? JSON.parse(item) : defaultValue;
-        } catch (e) {
-            console.error('Error reading from localStorage:', e);
-            return defaultValue;
-        }
-    },
-    set(key, value) {
-        try {
-            localStorage.setItem(key, JSON.stringify(value));
-        } catch (e) { console.error('Error writing to localStorage:', e); }
-    },
-    remove(key) {
-        try { localStorage.removeItem(key); } catch (e) { }
-    }
-};
-
-const prefs = {
-    getViewMode() { return storage.get('viewMode', 'grid'); },
-    setViewMode(mode) { storage.set('viewMode', mode); },
-    getFitMode() { return storage.get('fitMode', 'contain'); },
-    setFitMode(mode) { storage.set('fitMode', mode); }
-};
-
-// Initialization
-document.addEventListener('DOMContentLoaded', function() {
-    // Restore user preferences
-    const fitMode = prefs.getFitMode();
-    const fitModeSelect = document.getElementById('fit-mode');
-    if (fitModeSelect) {
-        fitModeSelect.value = fitMode;
-    }
-
-    // Active Nav State
-    const currentPath = window.location.pathname;
-    document.querySelectorAll('.nav-link').forEach(link => {
-        if (link.getAttribute('href') === currentPath) {
-            link.classList.add('text-blue-400');
-        }
-    });
-});
-
-// Export utilities
-window.parker = { ...(window.parker || {}),
-    showToast,
-    debounce,
-    formatFileSize,
-    formatBytes,
-    formatDate,
-    storage,
-    prefs
-};
+})();

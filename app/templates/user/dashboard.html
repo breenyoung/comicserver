@@ -5,57 +5,57 @@
 {% block content %}
 <div class="max-w-7xl mx-auto space-y-8" x-data="dashboard()">
 
-    <!-- User Header with Core Stats -->
-    <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-8 border border-gray-700 shadow-xl flex flex-col md:flex-row items-center gap-8 relative overflow-hidden">
+<!-- User Header with Core Stats -->
+<div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 border border-gray-700 shadow-xl flex flex-col md:flex-row items-center gap-6 relative overflow-hidden">
 
-        <div class="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-blob"></div>
+    <div class="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-blob"></div>
 
-        <div class="relative group">
-            <div class="w-32 h-32 rounded-full overflow-hidden border-4 border-gray-700 bg-gray-900 flex items-center justify-center shadow-lg">
-                <template x-if="data?.user?.avatar_url">
-                    <img :src="data.user.avatar_url" class="w-full h-full object-cover">
-                </template>
-                <template x-if="!data?.user?.avatar_url">
-                    <span class="text-4xl font-bold text-gray-500" x-text="data?.user?.username?.charAt(0).toUpperCase()"></span>
-                </template>
-            </div>
-
-            <label class="absolute inset-0 bg-black/60 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                <span class="text-xs text-white font-bold">Change</span>
-                <input type="file" class="hidden" accept="image/*" @change="uploadAvatar($event)">
-            </label>
+    <!-- Avatar -->
+    <div class="relative group flex-shrink-0">
+        <div class="w-24 h-24 rounded-full overflow-hidden border-4 border-gray-700 bg-gray-900 flex items-center justify-center shadow-lg">
+            <template x-if="data?.user?.avatar_url">
+                <img :src="data.user.avatar_url" class="w-full h-full object-cover">
+            </template>
+            <template x-if="!data?.user?.avatar_url">
+                <span class="text-3xl font-bold text-gray-500" x-text="data?.user?.username?.charAt(0).toUpperCase()"></span>
+            </template>
         </div>
 
-        <div class="text-center md:text-left flex-1 z-10">
-            <h1 class="text-4xl font-bold text-white mb-2" x-text="data?.user?.username"></h1>
-            <p class="text-gray-400">Member since <span x-text="formatDate(data?.user?.created_at)"></span></p>
-
-            <div class="mt-3">
-                <a :href="window.parker.route('pages.user_settings')" class="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors border border-gray-600 hover:border-gray-400 rounded-full px-3 py-1">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                    Account Settings
-                </a>
-            </div>
-
-            <!-- Core Stats Grid -->
-            <div class="grid grid-cols-3 gap-4 mt-6 max-w-2xl">
-                <div class="bg-gray-900/50 p-3 rounded-lg border border-gray-700 text-center hover:border-blue-500 transition-colors">
-                    <div class="text-2xl font-bold text-blue-400" x-text="data?.stats?.issues_read"></div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider">Issues Read</div>
-                </div>
-                <div class="bg-gray-900/50 p-3 rounded-lg border border-gray-700 text-center hover:border-green-500 transition-colors">
-                    <div class="text-2xl font-bold text-green-400" x-text="data?.stats?.time_read"></div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider">Time Spent</div>
-                </div>
-                <div class="bg-gray-900/50 p-3 rounded-lg border border-gray-700 text-center hover:border-purple-500 transition-colors">
-                    <div class="text-2xl font-bold text-purple-400" x-text="formatNumber(data?.stats?.pages_turned)"></div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider">Pages Turned</div>
-                </div>
-            </div>
-        </div>
+        <label class="absolute inset-0 bg-black/60 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+            <span class="text-xs text-white font-bold">Change</span>
+            <input type="file" class="hidden" accept="image/*" @change="uploadAvatar($event)">
+        </label>
     </div>
 
-    <!-- Analytics Grid -->
+    <!-- User Info -->
+    <div class="text-center md:text-left flex-1 z-10 min-w-0">
+        <h1 class="text-3xl font-bold text-white mb-1" x-text="data?.user?.username"></h1>
+        <p class="text-gray-400 text-sm mb-2">Member since <span x-text="formatDate(data?.user?.created_at)"></span></p>
+
+        <a :href="window.parker.route('pages.user_settings')" class="inline-flex items-center gap-2 text-xs text-gray-400 hover:text-white transition-colors border border-gray-600 hover:border-gray-400 rounded-full px-3 py-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            Settings
+        </a>
+    </div>
+
+    <!-- Core Stats - Now on Right -->
+    <div class="grid grid-cols-3 gap-3 z-10 flex-shrink-0">
+        <div class="bg-gray-900/50 p-3 rounded-lg border border-gray-700 text-center hover:border-blue-500 transition-colors min-w-[100px]">
+            <div class="text-xl font-bold text-blue-400" x-text="data?.stats?.issues_read"></div>
+            <div class="text-[10px] text-gray-500 uppercase tracking-wider">Issues Read</div>
+        </div>
+        <div class="bg-gray-900/50 p-3 rounded-lg border border-gray-700 text-center hover:border-green-500 transition-colors min-w-[100px]">
+            <div class="text-xl font-bold text-green-400" x-text="data?.stats?.time_read"></div>
+            <div class="text-[10px] text-gray-500 uppercase tracking-wider">Time Spent</div>
+        </div>
+        <div class="bg-gray-900/50 p-3 rounded-lg border border-gray-700 text-center hover:border-purple-500 transition-colors min-w-[100px]">
+            <div class="text-xl font-bold text-purple-400" x-text="formatNumber(data?.stats?.pages_turned)"></div>
+            <div class="text-[10px] text-gray-500 uppercase tracking-wider">Pages Turned</div>
+        </div>
+    </div>
+</div>
+
+    <!-- Quick Stats Grid (Always Visible) -->
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
         <!-- Series Progress -->
@@ -139,134 +139,146 @@
         </div>
     </div>
 
-    <!-- Creators, Publishers, Characters -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-        <!-- Top Writers -->
-        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <div class="flex items-center gap-3 mb-4">
-                <span class="text-2xl">✍️</span>
-                <h3 class="font-bold text-white">Top Writers</h3>
+    <!-- Collapsible Detailed Analytics -->
+    <div class="bg-gray-800/50 rounded-xl border border-gray-700">
+        <button
+            @click="detailedStatsExpanded = !detailedStatsExpanded"
+            class="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-800/70 transition-colors rounded-xl"
+        >
+            <div class="flex items-center gap-3">
+                <svg class="w-5 h-5 text-gray-400 transition-transform" :class="detailedStatsExpanded ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                </svg>
+                <h2 class="text-lg font-bold text-white">Detailed Statistics</h2>
             </div>
-            <div class="space-y-2">
-                <template x-for="(writer, index) in data?.creators?.top_writers || []" :key="writer.name">
-                    <div class="flex items-center justify-between p-2 bg-gray-900/50 rounded">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-gray-500" x-text="`#${index + 1}`"></span>
-                            <a :href="window.parker.route('pages.search', {}, `field=writer&value=${encodeURIComponent(writer.name)}&operator=contains`)">
-                                <span class="text-sm text-gray-300" x-text="writer.name"></span>
-                            </a>
-                        </div>
-                        <span class="text-xs text-blue-400" x-text="`${writer.comics_read} comics`"></span>
+            <span class="text-xs text-gray-500" x-text="detailedStatsExpanded ? 'Hide' : 'Show'"></span>
+        </button>
+
+        <div
+            x-show="detailedStatsExpanded"
+            x-collapse
+            class="px-6 pb-6 space-y-6"
+        >
+            <!-- Creators, Publishers, Characters -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
+
+                <!-- Top Writers -->
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="text-2xl">✍️</span>
+                        <h3 class="font-bold text-white">Top Writers</h3>
                     </div>
-                </template>
-                <div x-show="!data?.creators?.top_writers?.length" class="text-center py-4 text-gray-500 text-sm">
-                    No data yet
-                </div>
-            </div>
-        </div>
-
-        <!-- Top Artists -->
-        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <div class="flex items-center gap-3 mb-4">
-                <span class="text-2xl">🎨</span>
-                <h3 class="font-bold text-white">Top Artists</h3>
-            </div>
-            <div class="space-y-2">
-                <template x-for="(artist, index) in data?.creators?.top_artists || []" :key="artist.name">
-                    <div class="flex items-center justify-between p-2 bg-gray-900/50 rounded">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-gray-500" x-text="`#${index + 1}`"></span>
-                            <a :href="window.parker.route('pages.search', {}, `field=penciller&value=${encodeURIComponent(artist.name)}&operator=contains`)">
-                                <span class="text-sm text-gray-300" x-text="artist.name"></span>
-                            </a>
-                        </div>
-                        <span class="text-xs text-purple-400" x-text="`${artist.comics_read} comics`"></span>
-                    </div>
-                </template>
-                <div x-show="!data?.creators?.top_artists?.length" class="text-center py-4 text-gray-500 text-sm">
-                    No data yet
-                </div>
-            </div>
-        </div>
-
-        <!-- Top Publishers -->
-        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <div class="flex items-center gap-3 mb-4">
-                <span class="text-2xl">🏢</span>
-                <h3 class="font-bold text-white">Top Publishers</h3>
-            </div>
-            <div class="space-y-2">
-                <template x-for="(pub, index) in data?.publishers?.top_publishers || []" :key="pub.name">
-                    <div class="flex items-center justify-between p-2 bg-gray-900/50 rounded">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-gray-500" x-text="`#${index + 1}`"></span>
-                            <a :href="window.parker.route('pages.search', {}, `field=publisher&value=${encodeURIComponent(pub.name)}&operator=equal`)">
-                            <span class="text-sm text-gray-300" x-text="pub.name"></span>
-                            </a>
-                        </div>
-                        <span class="text-xs text-green-400" x-text="`${pub.comics_read} comics`"></span>
-                    </div>
-                </template>
-                <div x-show="!data?.publishers?.top_publishers?.length" class="text-center py-4 text-gray-500 text-sm">
-                    No data yet
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Genre Breakdown & Characters -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        <!-- Genre Distribution -->
-        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <div class="flex items-center gap-3 mb-4">
-                <span class="text-2xl">🎭</span>
-                <h3 class="font-bold text-white">Genre Diversity</h3>
-                <span class="ml-auto text-sm text-gray-400" x-text="`${data?.genres?.genres_explored || 0} genres`"></span>
-            </div>
-            <div class="space-y-3">
-                <template x-for="genre in data?.genres?.top_genres || []" :key="genre.name">
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <a :href="window.parker.route('pages.search', {}, `field=genre&value=${encodeURIComponent(genre.name)}&operator=contains`)">
-                                <span class="text-gray-300" x-text="genre.name"></span>
-                            </a>
-                            <span class="text-gray-500" x-text="`${genre.count} (${genre.percentage}%)`"></span>
-                        </div>
-                        <div class="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
-                            <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500"
-                                 :style="`width: ${genre.percentage}%`">
+                    <div class="space-y-2">
+                        <template x-for="(writer, index) in data?.creators?.top_writers || []" :key="writer.name">
+                            <div class="flex items-center justify-between p-2 bg-gray-900/50 rounded">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-gray-500" x-text="`#${index + 1}`"></span>
+                                    <span class="text-sm text-gray-300" x-text="writer.name"></span>
+                                </div>
+                                <span class="text-xs text-blue-400" x-text="`${writer.comics_read} comics`"></span>
                             </div>
+                        </template>
+                        <div x-show="!data?.creators?.top_writers?.length" class="text-center py-4 text-gray-500 text-sm">
+                            No data yet
                         </div>
                     </div>
-                </template>
-                <div x-show="!data?.genres?.top_genres?.length" class="text-center py-4 text-gray-500 text-sm">
-                    No genre data yet
+                </div>
+
+                <!-- Top Artists -->
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="text-2xl">🎨</span>
+                        <h3 class="font-bold text-white">Top Artists</h3>
+                    </div>
+                    <div class="space-y-2">
+                        <template x-for="(artist, index) in data?.creators?.top_artists || []" :key="artist.name">
+                            <div class="flex items-center justify-between p-2 bg-gray-900/50 rounded">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-gray-500" x-text="`#${index + 1}`"></span>
+                                    <span class="text-sm text-gray-300" x-text="artist.name"></span>
+                                </div>
+                                <span class="text-xs text-purple-400" x-text="`${artist.comics_read} comics`"></span>
+                            </div>
+                        </template>
+                        <div x-show="!data?.creators?.top_artists?.length" class="text-center py-4 text-gray-500 text-sm">
+                            No data yet
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Publishers -->
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="text-2xl">🏢</span>
+                        <h3 class="font-bold text-white">Top Publishers</h3>
+                    </div>
+                    <div class="space-y-2">
+                        <template x-for="(pub, index) in data?.publishers?.top_publishers || []" :key="pub.name">
+                            <div class="flex items-center justify-between p-2 bg-gray-900/50 rounded">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-gray-500" x-text="`#${index + 1}`"></span>
+                                    <span class="text-sm text-gray-300" x-text="pub.name"></span>
+                                </div>
+                                <span class="text-xs text-green-400" x-text="`${pub.comics_read} comics`"></span>
+                            </div>
+                        </template>
+                        <div x-show="!data?.publishers?.top_publishers?.length" class="text-center py-4 text-gray-500 text-sm">
+                            No data yet
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Top Characters -->
-        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <div class="flex items-center gap-3 mb-4">
-                <span class="text-2xl">🦸</span>
-                <h3 class="font-bold text-white">Top Characters</h3>
-            </div>
-            <div class="space-y-2">
-                <template x-for="(char, index) in data?.characters?.top_characters || []" :key="char.name">
-                    <div class="flex items-center justify-between p-2 bg-gray-900/50 rounded">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-gray-500" x-text="`#${index + 1}`"></span>
-                            <a :href="window.parker.route('pages.search', {}, `field=character&value=${encodeURIComponent(char.name)}&operator=contains`)">
-                                <span class="text-sm text-gray-300" x-text="char.name"></span>
-                            </a>
-                        </div>
-                        <span class="text-xs text-yellow-400" x-text="`${char.appearances} appearances`"></span>
+            <!-- Genre Breakdown & Characters -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                <!-- Genre Distribution -->
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="text-2xl">🎭</span>
+                        <h3 class="font-bold text-white">Genre Diversity</h3>
+                        <span class="ml-auto text-sm text-gray-400" x-text="`${data?.genres?.genres_explored || 0} genres`"></span>
                     </div>
-                </template>
-                <div x-show="!data?.characters?.top_characters?.length" class="text-center py-4 text-gray-500 text-sm">
-                    No character data yet
+                    <div class="space-y-3">
+                        <template x-for="genre in data?.genres?.top_genres || []" :key="genre.name">
+                            <div>
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-gray-300" x-text="genre.name"></span>
+                                    <span class="text-gray-500" x-text="`${genre.count} (${genre.percentage}%)`"></span>
+                                </div>
+                                <div class="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500"
+                                         :style="`width: ${genre.percentage}%`">
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="!data?.genres?.top_genres?.length" class="text-center py-4 text-gray-500 text-sm">
+                            No genre data yet
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Characters -->
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="text-2xl">🦸</span>
+                        <h3 class="font-bold text-white">Top Characters</h3>
+                    </div>
+                    <div class="space-y-2">
+                        <template x-for="(char, index) in data?.characters?.top_characters || []" :key="char.name">
+                            <div class="flex items-center justify-between p-2 bg-gray-900/50 rounded">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-gray-500" x-text="`#${index + 1}`"></span>
+                                    <span class="text-sm text-gray-300" x-text="char.name"></span>
+                                </div>
+                                <span class="text-xs text-yellow-400" x-text="`${char.appearances} appearances`"></span>
+                            </div>
+                        </template>
+                        <div x-show="!data?.characters?.top_characters?.length" class="text-center py-4 text-gray-500 text-sm">
+                            No character data yet
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -433,6 +445,7 @@
 function dashboard() {
     return {
         data: null,
+        detailedStatsExpanded: false,  // Collapsed by default
 
         async init() {
             try {
@@ -520,7 +533,7 @@ function dashboard() {
             if(!dateStr) return '';
             return new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'long' });
         },
-        
+
         formatNumber(num) {
             return (num || 0).toLocaleString();
         }

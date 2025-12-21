@@ -398,5 +398,37 @@ class ScanManager:
             db.close()
 
 
+    def add_thumbnail_task(self, library_id: int, force: bool = False) -> dict:
+        """
+        Queue a thumbnail/colorscape generation task.
+        This reuses the parallel image processor to backfill missing data.
+        """
+        db = SessionLocal()
+        try:
+            # Check for existing job to avoid stacking
+            existing = db.query(ScanJob).filter(
+                ScanJob.library_id == library_id,
+                ScanJob.job_type == JobType.THUMBNAIL,
+                ScanJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
+            ).first()
+
+            if existing:
+                return {"status": "ignored", "job_id": existing.id, "message": "Job already active"}
+
+            job = ScanJob(
+                library_id=library_id,
+                force_scan=force,
+                job_type=JobType.THUMBNAIL,
+                status=JobStatus.PENDING
+            )
+            db.add(job)
+            db.commit()
+            db.refresh(job)
+            return {"status": "queued", "job_id": job.id, "message": "Job queued"}
+        finally:
+            db.close()
+
+
+
 # Global instance
 scan_manager = ScanManager()

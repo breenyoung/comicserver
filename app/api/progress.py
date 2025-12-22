@@ -109,7 +109,9 @@ async def update_comic_progress(
         comic_id: int,
         request: UpdateProgressRequest,
         service: Annotated[ReadingProgressService, Depends(get_progress_service)],
-        db: SessionDep
+        db: SessionDep,
+        context_type: Optional[str] = None, # Accept context from reader
+        context_id: Optional[int] = None
 ):
     """
     Update reading progress for a comic.
@@ -117,11 +119,13 @@ async def update_comic_progress(
     """
 
     try:
-        # 1. Prepare the data (Service performs flush internally)
+        # 2. Prepare the data (Service performs flush internally)
         progress = service.update_progress(
             comic_id,
             request.current_page,
-            request.total_pages
+            request.total_pages,
+            context_type=context_type,
+            context_id=context_id
         )
 
         # 2. Commit the transaction

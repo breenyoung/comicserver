@@ -301,6 +301,7 @@ class StatisticsService:
             },
             "collection": collection_stats,
             "heatmap": heatmap_data,
+            "active_streak": self.get_active_streak(),
         }
 
     def get_year_wrapped(self, year: int):
@@ -612,4 +613,39 @@ class StatisticsService:
                 "avg_burst": avg_burst
             }
         }
+
+    def get_active_streak(self) -> int:
+        """Calculates the current consecutive days of reading activity"""
+        # 1. Get unique dates of activity (Ordered Descending)
+        activity_dates = self.db.query(
+            func.date(ActivityLog.created_at).label('read_date')
+        ).filter(ActivityLog.user_id == self.user.id) \
+            .group_by('read_date') \
+            .order_by(func.date(ActivityLog.created_at).desc()).all()
+
+        if not activity_dates:
+            return 0
+
+        today = datetime.now(timezone.utc).date()
+        yesterday = today - timedelta(days=1)
+
+        # Convert strings from SQLite to date objects
+        dates = [datetime.strptime(d.read_date, '%Y-%m-%d').date() for d in activity_dates]
+
+        # 2. If no activity today OR yesterday, the streak is broken
+        if dates[0] < yesterday:
+            return 0
+
+        # 3. Count backwards
+        streak = 0
+        current_check = dates[0]
+
+        for d in dates:
+            if d == current_check:
+                streak += 1
+                current_check -= timedelta(days=1)
+            else:
+                break
+
+        return streak
 

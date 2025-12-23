@@ -196,8 +196,16 @@
                 <div>
                     <div class="flex items-baseline gap-1">
                         <div class="text-xl md:text-3xl font-bold text-orange-400" x-text="data?.reading_behavior?.last_30_days?.comics_read || 0"></div>
-                        <div class="hidden md:inline text-sm text-gray-500" x-text="`of your ${data?.reading_behavior?.monthly_reading_goal}-issue monthly goal`"></div>
-                        <div class="md:hidden text-[8px] text-gray-500 uppercase font-bold">Comics</div>
+                        <div class="hidden md:inline text-sm text-gray-500">
+                            of your
+                            <a :href="window.parker.route('pages.user_settings')"
+                               class="text-orange-400/80 hover:text-orange-400 hover:underline transition-all decoration-orange-400/30 underline-offset-4 font-medium"
+                               x-text="`${data?.reading_behavior?.monthly_reading_goal || 10}-issue`"
+                               title="Change your monthly goal in settings">
+                            </a>
+                            monthly goal
+                        </div>
+                         <div class="md:hidden text-[8px] text-gray-500 uppercase font-bold">Comics</div>
                     </div>
                 </div>
 
@@ -414,7 +422,7 @@
     </div>
 
     <!-- Main Content Grid: Continue Reading + Sidebar -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
 
         <!-- Left Column: Continue Reading + Smart Filters -->
         <div class="lg:col-span-2 space-y-8">
@@ -519,29 +527,6 @@
         <!-- Right Sidebar: OPDS + Pull Lists -->
         <div class="space-y-6">
 
-            <!-- OPDS Feed -->
-            <template x-if="data?.opds_enabled">
-                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                    <div class="flex items-center gap-3 mb-4">
-                        <span class="text-2xl">📡</span>
-                        <h3 class="font-bold text-white">OPDS Feed</h3>
-                    </div>
-                    <div class="space-y-3">
-                        <p class="text-sm text-gray-400">Connect your e-reader or comics app</p>
-                        <input id="opds-input"
-                               readonly
-                               :value="`${window.location.origin}/api/opds/`"
-                               class="w-full text-xs bg-gray-900 text-gray-300 px-3 py-2 rounded border border-gray-700 font-mono cursor-pointer"
-                               @click="$event.target.select()">
-                        <button @click="copyToClipboard($event.target.previousElementSibling.value)"
-                                class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded text-sm font-bold transition-colors">
-                            Copy URL
-                        </button>
-                        <span class="text-xs text-gray-500 block">Use your Parker username & password.</span>
-                    </div>
-                </div>
-            </template>
-
             <!-- Pull Lists -->
             <div>
                 <div class="flex justify-between items-center mb-4">
@@ -566,6 +551,32 @@
                     </button>
                 </div>
             </div>
+
+
+            <!-- OPDS Feed -->
+            <template x-if="data?.opds_enabled">
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="text-2xl">📡</span>
+                        <h3 class="font-bold text-white">OPDS Feed</h3>
+                    </div>
+                    <div class="space-y-3">
+                        <p class="text-sm text-gray-400">Connect your e-reader or comics app</p>
+                        <input id="opds-input"
+                               readonly
+                               :value="`${window.location.origin}/api/opds/`"
+                               class="w-full text-xs bg-gray-900 text-gray-300 px-3 py-2 rounded border border-gray-700 font-mono cursor-pointer"
+                               @click="$event.target.select()">
+                        <button @click="copyToClipboard($event.target.previousElementSibling.value)"
+                                class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded text-sm font-bold transition-colors">
+                            Copy URL
+                        </button>
+                        <span class="text-xs text-gray-500 block">Use your Parker username & password.</span>
+                    </div>
+                </div>
+            </template>
+
+
         </div>
     </div>
 </div>

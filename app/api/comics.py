@@ -8,7 +8,7 @@ import re
 import random
 
 from app.core.comic_helpers import (get_reading_time, get_format_sort_index, REVERSE_NUMBERING_SERIES,
-                                    get_age_rating_config, get_series_age_restriction)
+                                    get_age_rating_config, get_series_age_restriction, get_thumbnail_url, get_thumbnail_hash)
 from app.api.deps import SessionDep, CurrentUser, ComicDep
 
 from app.models.comic import Comic, Volume
@@ -151,6 +151,7 @@ async def get_comic(comic_id: int, db: SessionDep, current_user: CurrentUser):
         "filename": comic.filename,
         "file_path": comic.file_path,
         "file_size": comic.file_size,
+        "thumbnail_hash": get_thumbnail_hash(comic.updated_at),
 
         # Library info
         "library_id": comic.volume.series.library_id,
@@ -274,22 +275,22 @@ async def get_random_backgrounds(
     """
     # 1. Fetch ALL eligible IDs (Linear scan, fast)
     # We only fetch the ID column to minimize memory usage
-    all_ids_query = db.query(Comic.id).filter(Comic.thumbnail_path != None).all()
+    all_rows = db.query(Comic.id, Comic.updated_at).filter(Comic.thumbnail_path != None).all()
 
     # SQLAlchemy returns a list of tuples like [(1,), (2,), (5,)]
     # We flatten this to a standard list [1, 2, 5]
-    all_ids = [r[0] for r in all_ids_query]
+    #all_ids = [r[0] for r in all_ids_query]
 
-    if not all_ids:
+    if not all_rows:
         return []
 
     # 2. Python Sample (Instant)
     # Safe handling if we have fewer comics than the requested limit
-    sample_size = min(len(all_ids), limit)
-    selected_ids = random.sample(all_ids, sample_size)
+    sample_size = min(len(all_rows), limit)
+    selected_rows = random.sample(all_rows, sample_size)
 
     # 3. Construct URLs (No extra DB query needed)
-    return [f"api/comics/{cid}/thumbnail" for cid in selected_ids]
+    return [get_thumbnail_url(cid, updated_at) for cid, updated_at in selected_rows]
 
 
 @router.get("/covers/manifest", name="cover_manifest")
@@ -310,6 +311,7 @@ async def get_cover_manifest(
         Comic.id,
         Comic.title,
         Comic.number,
+        Comic.updated_at,
         Volume.volume_number,
         Series.name.label("series_name")
     ) \
@@ -395,7 +397,7 @@ async def get_cover_manifest(
                 "comic_id": r.id,
                 # Explicitly use the labeled series name
                 "label": f"{r.series_name} #{r.number}",
-                "thumbnail_url": f"/api/comics/{r.id}/thumbnail"
+                "thumbnail_url": get_thumbnail_url(r.id, r.updated_at)
             }
             for r in items
         ]

@@ -219,10 +219,8 @@ async def get_comic_thumbnail(
         db: SessionDep
 ):
     """
-        Get the thumbnail for a comic (public)
-    Serves from storage/cover. Regenerates if missing.
-        Self-healing: Generates file if missing, but DOES NOT write to DB
-        to avoid locking issues during parallel loading.
+    Get the thumbnail for a comic (public)
+    Serves from storage/cover.
     """
     # 1. Base Query
     comic = db.query(Comic).filter(Comic.id == comic_id).first()
@@ -231,33 +229,38 @@ async def get_comic_thumbnail(
         # We return 404 here to prevent leaking existence of the comic
         raise HTTPException(status_code=404, detail="Comic not found")
 
+    last_mod = int(comic.updated_at.timestamp()) if comic.updated_at else 0
+    etag = f'"{comic_id}-{last_mod}"'
+
+    thumb_path = None
 
     # 2. Layer 1: Check the path stored in the Database
     if comic.thumbnail_path:
         db_path = Path(comic.thumbnail_path)
         if db_path.exists():
-            return FileResponse(db_path, media_type="image/webp")
+            thumb_path = db_path
 
-    # 3. Layer 2: Check the "Standard" path (Self-Healing fallback)
-    # This handles cases where the DB is NULL or points to a file that was deleted.
-    standard_path = Path(f"./storage/cover/comic_{comic.id}.webp")
+    if not thumb_path:
+        # 3. Layer 2: Check the "Standard" path (Self-Healing fallback)
+        # This handles cases where the DB is NULL or points to a file that was deleted.
+        standard_path = Path(f"./storage/cover/comic_{comic.id}.webp")
+        if standard_path.exists():
+            thumb_path = standard_path
 
-    if standard_path.exists():
-        return FileResponse(standard_path, media_type="image/webp")
+    if thumb_path:
 
-    # 4. Layer 3: Generate on the fly
-    # We use the standard path for the new file.
-    image_service = ImageService()
-    success = image_service.generate_thumbnail(comic.file_path, standard_path)
-
-    if not success:
+        return FileResponse(
+            thumb_path,
+            media_type="image/webp",
+            headers={
+                "ETag": etag,
+                "Cache-Control": "public, max-age=31536000",  # 1 year
+                "Vary": "Accept-Encoding"
+            }
+        )
+    else:
         # Return a placeholder or 404
-        raise HTTPException(status_code=404, detail="Could not generate thumbnail")
-
-    # NOTE: We serve the file, but we DO NOT write back to the DB here.
-    # This avoids the "Database Locked" issues during parallel loading.
-    # The next time this runs, it will hit Layer 2 and succeed.
-    return FileResponse(standard_path, media_type="image/webp")
+        raise HTTPException(status_code=404, detail="Could not find thumbnail")
 
 
 @router.get("/random/backgrounds", name="random_backgrounds")

@@ -60,22 +60,14 @@
 
     /* Bottom Controls */
     .reader-controls {
-        position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%);
         background: rgba(0, 0, 0, 0.9);
         backdrop-filter: blur(10px);
         padding: 0.75rem 1.5rem; border-radius: 9999px;
         display: flex; align-items: center; gap: 1rem;
         opacity: 0; transition: opacity 0.3s, transform 0.3s;
-        z-index: 50; border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.1);
     }
 
-    /* The Invisible Trigger Zone at the bottom */
-    .hover-zone {
-        position: absolute; bottom: 0; left: 0; right: 0;
-        height: 15vh; /* Active in bottom 15% of screen or adjust to 20vh; if still seeing slight flicker */
-        z-index: 40;
-        background: transparent;
-    }
 
     /* Base state for controls/scrubber: Hidden by default */
     .reader-controls, .scrubber-wrapper {
@@ -115,14 +107,13 @@
 
     /* SCRUBBER STYLES */
     .scrubber-wrapper {
-        position: absolute; bottom: 5.5rem; /* Sit above the control buttons */
-        left: 50%; transform: translateX(-50%);
-        width: 90%; max-width: 600px;
+        width: 90%;
+        max-width: 600px;
         height: 20px; /* Hit area height */
         display: flex; align-items: center;
         z-index: 55;
         opacity: 0; transition: opacity 0.3s;
-        pointer-events: none; /* Ignore clicks when hidden */
+        pointer-events: auto;
     }
 
     /* The Range Input Reset */
@@ -156,13 +147,19 @@
 
     /* Tooltip for Page Number */
     .scrubber-tooltip {
-        position: absolute; bottom: 25px;
-        background: #3b82f6; color: white;
-        padding: 2px 6px; border-radius: 4px;
-        font-size: 0.75rem; font-weight: bold;
+        position: absolute;
+        bottom: 100%;
+        margin-bottom: 10px;
+        background: #3b82f6;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: bold;
         pointer-events: none;
         transform: translateX(-50%);
         white-space: nowrap;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
     }
 
 
@@ -394,64 +391,61 @@
 
         </div>
 
-        <div class="scrubber-wrapper" :class="{'controls-visible': shouldShowUI}" x-show="meta.page_count > 0">
+        <div class="fixed bottom-0 left-0 right-0 z-50 flex flex-col items-center pb-8"
+             x-on:mouseenter="isHoveringZone = true"
+             x-on:mouseleave="isHoveringZone = false"
+             :class="{'pointer-events-none': !shouldShowUI && !isHoveringZone}">
 
-            <div class="scrubber-tooltip"
-                 x-show="isScrubbing || isHoveringScrubber"
-                 :style="`left: ${(scrubberValue / (meta.page_count - 1)) * 100}%`"
-                 x-text="parseInt(scrubberValue) + 1">
+            <div class="scrubber-wrapper relative mb-6"
+                 :class="{'controls-visible': shouldShowUI}"
+                 x-show="meta.page_count > 0">
+
+                <div class="scrubber-tooltip"
+                     x-show="isScrubbing || isHoveringScrubber"
+                     :style="`left: ${(scrubberValue / (meta.page_count - 1)) * 100}%`"
+                     x-text="parseInt(scrubberValue) + 1">
+                </div>
+
+                <input type="range"
+                       class="scrubber"
+                       min="0"
+                       :max="meta.page_count - 1"
+                       x-model="scrubberValue"
+                       x-on:mouseenter="isHoveringScrubber = true"
+                       x-on:mouseleave="isHoveringScrubber = false"
+                       x-on:mousedown="isScrubbing = true"
+                       x-on:touchstart="isScrubbing = true"
+                       x-on:change="finishScrub()"
+                       x-on:input="updateScrubberUI()">
             </div>
 
-            <input type="range"
-                   class="scrubber"
-                   min="0"
-                   :max="meta.page_count - 1"
-                   x-model="scrubberValue"
-                   x-on:mouseenter="isHoveringScrubber = true"
-                   x-on:mouseleave="isHoveringScrubber = false"
-                   x-on:mousedown="isScrubbing = true"
-                   x-on:touchstart="isScrubbing = true"
-                   x-on:change="finishScrub()"
-                   x-on:input="updateScrubberUI()"
-            >
-        </div>
+            <div class="reader-controls relative shadow-2xl"
+                 :class="{'controls-visible': shouldShowUI}"
+                 x-on:mouseenter="isHoveringBar = true"
+                 x-on:mouseleave="isHoveringBar = false">
 
+                <button x-on:click="goToBook(meta.prev_comic_id)" :disabled="!meta.prev_comic_id" class="text-gray-400 hover:text-white disabled:opacity-30">⏮</button>
+                <button x-on:click="prevPage()" class="text-white hover:text-blue-400 text-2xl px-2">◀</button>
 
-        <div class="reader-controls" :class="{'controls-visible': shouldShowUI}"
-                                    x-on:mouseenter="isHoveringBar = true" x-on:mouseleave="isHoveringBar = false"
-        >
-            <button
-                x-on:click="goToBook(meta.prev_comic_id)"
-                :disabled="!meta.prev_comic_id"
-                class="text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Previous Issue ([)"
-            >⏮</button>
+                <div class="flex items-center space-x-2 text-sm font-mono text-gray-300 mx-2">
+                    <span x-text="currentPage + 1" class="text-white font-bold"></span>
+                    <span class="text-gray-500">/</span>
+                    <span x-text="meta.page_count"></span>
+                </div>
 
-            <button x-on:click="prevPage()" class="text-white hover:text-blue-400 text-2xl px-2">◀</button>
+                <button x-on:click="nextPage()" class="text-white hover:text-blue-400 text-2xl px-2">▶</button>
+                <button x-on:click="goToBook(meta.next_comic_id)" :disabled="!meta.next_comic_id" class="text-gray-400 hover:text-white disabled:opacity-30">⏭</button>
 
-            <div class="flex items-center space-x-2 text-sm font-mono text-gray-300 mx-2">
-                <span x-text="currentPage + 1" class="text-white font-bold"></span>
-                <span class="text-gray-500">/</span>
-                <span x-text="meta.page_count"></span>
+                <div class="w-px h-6 bg-gray-700 mx-2"></div>
+
+                <select x-model="fitMode" class="bg-transparent text-xs text-gray-400 focus:outline-none cursor-pointer">
+                    <option value="contain">Fit Screen</option>
+                    <option value="width">Fit Width</option>
+                    <option value="height">Fit Height</option>
+                </select>
             </div>
-
-            <button x-on:click="nextPage()" class="text-white hover:text-blue-400 text-2xl px-2">▶</button>
-
-            <button
-                x-on:click="goToBook(meta.next_comic_id)"
-                :disabled="!meta.next_comic_id"
-                class="text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Next Issue (])"
-            >⏭</button>
-
-            <div class="w-px h-6 bg-gray-700 mx-2"></div>
-
-             <select x-model="fitMode" class="bg-transparent text-xs text-gray-400 focus:outline-none cursor-pointer" x-on:change="$el.blur()">
-                <option value="contain">Fit Screen</option>
-                <option value="width">Fit Width</option>
-                <option value="height">Fit Height</option>
-            </select>
         </div>
+
     </div>
 
 <div x-show="showGoto" x-cloak
